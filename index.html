@@ -65,9 +65,10 @@
 <script>
 // --- CONFIGURACIÓN MAPA ---Proyecto realizado por Raul Viquez. Por favor no reproduzca este codigo html.
 const mymap = L.map('mapid', { zoomControl: true }).setView([8.98, -79.52], 13);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
     maxZoom: 24,
-    maxNativeZoom: 19
+    subdomains: ['mt0','mt1','mt2','mt3'],
+    attribution: '&copy; Google Maps'
 }).addTo(mymap);
 
 const gridLayer = L.layerGroup().addTo(mymap);
@@ -257,3 +258,4 @@ mymap.on('moveend zoomend', updateGrid);
 </script>
 </body>
 </html>
+
