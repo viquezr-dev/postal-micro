@@ -115,37 +115,52 @@ L.control.layers(null, { "Zonas": estafetasLayer, "Rutas": estafetaslLayer, "Est
 mymap.on("click", function (e) {
     if (e.originalEvent._leaf_handled) return; 
     clickHighlightLayer.clearLayers();
+    
     const lat = e.latlng.lat;
     const lon = e.latlng.lng;
-    let vm = null;
+    
+    // Obtener Zona VM (Nivel 1)
+    let vm = "S/Z";
     if (rawGeoData) {
         const hit = leafletPip.pointInLayer([lon, lat], L.geoJSON(rawGeoData));
-        if (hit.length > 0) vm = hit[0].feature.properties.VM_LEVEL;
+        if (hit.length > 0) vm = hit[0].feature.properties.VM_LEVEL || "S/Z";
     }
-    if (!vm) {
-        L.popup().setLatLng(e.latlng).setContent("<div style='text-align:center;color:#c0392b'><b>ZONA NO DEFINIDA</b></div>").openOn(mymap);
-        return;
-    }
+
     const zoom = mymap.getZoom();
-    const cod7 = generarCOD7(lat, lon);
+    const cod7 = generarCOD7(lat, lon); // Nivel 2
+    const microLN = generarMicroLN(lat, lon); // Nivel 3
+    
     let codFinal = "";
-    if (zoom < 21) {
+    let tituloNivel = "";
+
+    if (zoom < 17) {
+        // NIVEL 1
+        codFinal = vm;
+        tituloNivel = "ZONA POSTAL";
+    } else if (zoom >= 17 && zoom < 21) {
+        // NIVEL 2
         codFinal = vm + "-" + cod7;
+        tituloNivel = "CODIGO DE SECTOR";
     } else {
+        // NIVEL 3
         const snapLat = Math.floor(lat / MICRO_LAT_DIV) * MICRO_LAT_DIV;
         const snapLon = Math.floor(lon / MICRO_LON_DIV) * MICRO_LON_DIV;
         L.rectangle([[snapLat, snapLon], [snapLat + MICRO_LAT_DIV, snapLon + MICRO_LON_DIV]], {
             color: "#d35400", weight: 2, fillOpacity: 0.4, interactive: false
         }).addTo(clickHighlightLayer);
-        codFinal = vm + "-" + cod7 + "-" + generarMicroLN(lat, lon);
+
+        codFinal = vm + "-" + cod7 + "-" + microLN;
+        tituloNivel = "ID DE ALTA PRECISION";
     }
+
     const contenido = "<div style='text-align:center; min-width:180px; padding-top:10px;'>" +
-                "<b style='font-size:10px; color:#7f8c8d;'>DIRECCION POSTAL</b><br>" +
+                "<b style='font-size:10px; color:#7f8c8d;'>" + tituloNivel + "</b><br>" +
                 "<span style='font-size:18px; font-weight:bold; color:#d35400;'>" + codFinal + "</span><br>" +
                 "<div style='margin-top:10px; display: flex; gap: 5px; justify-content: center;'>" +
                     "<a href='#' class='btn-nav' style='flex:1' onclick='abrirNavegacion(" + lat + "," + lon + ")'>IR MAPA</a>" +
                     "<a href='#' class='btn-ws' style='flex:1' onclick='compartirWhatsApp(" + lat + "," + lon + ",\"" + codFinal + "\")'>WHATSAPP</a>" +
                 "</div></div>";
+
     L.popup({ offset: [0, -30], autoPan: true }).setLatLng(e.latlng).setContent(contenido).openOn(mymap);
 });
 
@@ -193,3 +208,4 @@ mymap.on('moveend zoomend', updateGrid);
 </script>
 </body>
 </html>
+
