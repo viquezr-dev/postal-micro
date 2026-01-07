@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SISTEMA POSTAL DE PANAMÁ - PRECISIÓN TOTAL</title>
+    <title>SISTEMA POSTAL DE PANAMÁ - RESOLUCIÓN NANO</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
@@ -13,7 +13,9 @@
         input#search-input { flex: 1; border: none; padding: 8px; font-size: 16px; outline: none; }
         button#search-btn { background: #2c3e50; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; }
         .btn-nav { display: inline-block; margin-top: 10px; padding: 8px 15px; background-color: #3498db; color: white !important; text-decoration: none !important; border-radius: 5px; font-weight: bold; font-size: 12px; }
-        .grid-label { font-size: 9px; font-weight: bold; color: #2980b9; pointer-events: none; text-shadow: 0 0 2px white; text-align: center; }
+        
+        /* Estilo de la rejilla corregido para visibilidad */
+        .grid-label { font-size: 10px; font-weight: bold; color: #2980b9; pointer-events: none; text-shadow: 0 0 3px white; text-align: center; }
         .leaflet-top.leaflet-right { top: 65px !important; }
     </style>
 </head>
@@ -21,7 +23,7 @@
 
 <div class="map-title"><h1>SISTEMA POSTAL DE PANAMÁ</h1></div>
 <div class="search-container">
-    <input type="text" id="search-input" placeholder="M8599-AA000">
+    <input type="text" id="search-input" placeholder="A6199-TB259-H4">
     <button id="search-btn">IR</button>
 </div>
 <div id="mapid"></div>
@@ -35,7 +37,7 @@ const mymap = L.map('mapid', { zoomControl: true }).setView([8.98, -79.52], 11);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mymap);
 
 const gridLayer = L.layerGroup().addTo(mymap);
-const selectionLayer = L.layerGroup().addTo(mymap); // Capa para el recuadro azul del clic
+const selectionLayer = L.layerGroup().addTo(mymap);
 let zonasLayer = L.layerGroup().addTo(mymap);
 let rutasLayer = L.layerGroup().addTo(mymap);
 let estafetasLayer = L.layerGroup().addTo(mymap);
@@ -43,33 +45,46 @@ let rawGeoData = null;
 
 const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ"; 
 
-// --- LÓGICA DE COORDENADAS MICRO ---
-function getMicroData(lat, lon, bounds) {
-    const sw = bounds.getSouthWest();
-    const ne = bounds.getNorthEast();
+// --- LÓGICA DE GEOMETRÍA JERÁRQUICA ---
+function getHierarchicalCode(lat, lon, macroBounds) {
+    const sw = macroBounds.getSouthWest();
+    const ne = macroBounds.getNorthEast();
+    
+    // 1. NIVEL MICRO (Subdivisión 24x24)
     const stepX = (ne.lng - sw.lng) / 24;
     const stepY = (ne.lat - sw.lat) / 24;
-
     const ix = Math.floor((lon - sw.lng) / stepX);
     const iy = Math.floor((lat - sw.lat) / stepY);
-    
-    // Límites de la micro-cuadrícula para dibujar el rectángulo
-    const mSW = [sw.lat + (iy * stepY), sw.lng + (ix * stepX)];
-    const mNE = [sw.lat + ((iy + 1) * stepY), sw.lng + ((ix + 1) * stepX)];
 
-    // Generar código
-    const xNorm = Math.max(0, Math.min(0.999, (lon - sw.lng) / (ne.lng - sw.lng)));
-    const yNorm = Math.max(0, Math.min(0.999, (lat - sw.lat) / (ne.lat - sw.lat)));
+    // 2. NIVEL NANO (Sub-subdivisión 10x10 dentro del Micro)
+    const microSW_lng = sw.lng + (ix * stepX);
+    const microSW_lat = sw.lat + (iy * stepY);
+    const nanoStepX = stepX / 10;
+    const nanoStepY = stepY / 10;
+    const nix = Math.floor((lon - microSW_lng) / nanoStepX);
+    const niy = Math.floor((lat - microSW_lat) / nanoStepY);
+
+    // Límites para dibujo
+    const microBounds = [[microSW_lat, microSW_lng], [microSW_lat + stepY, microSW_lng + stepX]];
+    const nanoBounds = [
+        [microSW_lat + (niy * nanoStepY), microSW_lng + (nix * nanoStepX)],
+        [microSW_lat + ((niy + 1) * nanoStepY), microSW_lng + ((nix + 1) * nanoStepX)]
+    ];
+
+    // Códigos
+    const l1 = ALFABETO[ix] || "A";
+    const l2 = ALFABETO[iy] || "A";
+    const n1 = nix; 
+    const n2 = niy;
+    const n3 = Math.floor((nix + niy) / 2); // Digito de control
     
-    let l1 = ALFABETO[Math.floor(xNorm * 24)];
-    let l2 = ALFABETO[Math.floor(yNorm * 24)];
-    let n1 = Math.floor(((xNorm * 24) % 1) * 10);
-    let n2 = Math.floor(((yNorm * 24) % 1) * 10);
-    let n3 = Math.floor((((xNorm + yNorm) / 2) * 100) % 10);
+    const nanoCode = ALFABETO[nix] + niy; // Ejemplo: H4
 
     return {
-        code: `${l1}${l2}${n1}${n2}${n3}`,
-        bounds: [mSW, mNE]
+        micro: `${l1}${l2}${n1}${n2}${n3}`,
+        nano: nanoCode,
+        microRect: microBounds,
+        nanoRect: nanoBounds
     };
 }
 
@@ -77,56 +92,55 @@ function getMicroData(lat, lon, bounds) {
 $.getJSON("cuadricula.geojson", function(data) {
     rawGeoData = data;
     L.geoJSON(data, {
-        style: { color: "#2c3e50", weight: 1.5, fillOpacity: 0.05 },
-        onEachFeature: (f, l) => { l.bindPopup(`<b>MACRO:</b> ${f.properties.codigo}`); }
+        style: function(f) { return { color: "#2c3e50", weight: 2, fillOpacity: 0.1, interactive: true }; },
+        onEachFeature: (f, l) => {
+            // Manejo dinámico de interactividad
+            mymap.on('zoomend', function() {
+                if (mymap.getZoom() >= 16) {
+                    l.setStyle({ fillOpacity: 0, weight: 0.5 });
+                } else {
+                    l.setStyle({ fillOpacity: 0.1, weight: 2 });
+                }
+            });
+        }
     }).addTo(zonasLayer);
 });
 
-$.getJSON("estafetasl.geojson", function(data) {
-    L.geoJSON(data, { style: { color: "#e74c3c", weight: 3 }, onEachFeature: (f, l) => {
-        l.bindPopup(`<b>RUTA:</b> ${f.properties.RUTA || "Ruta"}`);
-    }}).addTo(rutasLayer);
-});
+// Otras capas (Rutas y Estafetas)
+$.getJSON("estafetasl.geojson", data => L.geoJSON(data, {style:{color:"#e74c3c", weight:3}}).addTo(rutasLayer));
+$.getJSON("estafetasp.geojson", data => L.geoJSON(data, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:7, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasLayer));
 
-$.getJSON("estafetasp.geojson", function(data) {
-    L.geoJSON(data, { pointToLayer: (f, ll) => L.circleMarker(ll, {radius:7, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1}),
-    onEachFeature: (f, l) => {
-        l.bindPopup(`<b>ESTAFETA:</b><br>${f.properties.ESTAF_NAME || "Estafeta"}<br><button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${l.getLatLng().lat},${l.getLatLng().lng}')">📍 IR</button>`);
-    }}).addTo(estafetasLayer);
-});
-
-// --- ACCIÓN AL HACER CLIC ---
+// --- CLIC EN EL MAPA ---
 mymap.on("click", function (e) {
     selectionLayer.clearLayers();
-    let macroID = "FUERA";
-    let microCode = "";
+    if (!rawGeoData) return;
 
-    if (rawGeoData) {
-        const hit = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawGeoData));
-        if (hit.length > 0) {
-            macroID = hit[0].feature.properties.codigo || "S/N";
-            const bounds = L.geoJSON(hit[0].feature).getBounds();
-            const microData = getMicroData(e.latlng.lat, e.latlng.lng, bounds);
-            microCode = "-" + microData.code;
+    const hit = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawGeoData));
+    if (hit.length > 0) {
+        const macroID = hit[0].feature.properties.codigo || "S/N";
+        const macroBounds = L.geoJSON(hit[0].feature).getBounds();
+        const data = getHierarchicalCode(e.latlng.lat, e.latlng.lng, macroBounds);
 
-            // DIBUJAR EL CUADRADITO MICRO (La esencia de tu pedido)
-            L.rectangle(microData.bounds, {color: "#3498db", weight: 2, fillOpacity: 0.3, dashArray: "2, 2"}).addTo(selectionLayer);
-        }
+        // Dibujar el nivel Nano (el más pequeño)
+        L.rectangle(data.nanoRect, {color: "#e67e22", weight: 2, fillOpacity: 0.4}).addTo(selectionLayer);
+        // Dibujar el nivel Micro contenedor
+        L.rectangle(data.microRect, {color: "#3498db", weight: 1, fillOpacity: 0.1, dashArray: "5,5"}).addTo(selectionLayer);
+
+        L.popup().setLatLng(e.latlng).setContent(`
+            <div style="text-align:center;">
+                <b style="color:#7f8c8d;">CÓDIGO POSTAL COMPLETO</b><br>
+                <span style="font-size:20px; font-weight:bold; color:#2c3e50;">${macroID}-${data.micro}-${data.nano}</span><br>
+                <hr>
+                <button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${e.latlng.lat},${e.latlng.lng}')">📍 NAVEGAR AQUÍ</button>
+            </div>
+        `).openOn(mymap);
     }
-
-    L.popup().setLatLng(e.latlng).setContent(`
-        <div style="text-align:center;">
-            <b>CÓDIGO COMPLETO</b><br>
-            <span style="font-size:18px; font-weight:bold; color:#e67e22;">${macroID}${microCode}</span><br>
-            <button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${e.latlng.lat},${e.latlng.lng}')">📍 NAVEGAR AQUÍ</button>
-        </div>
-    `).openOn(mymap);
 });
 
-// --- DIBUJO DE REJILLA EN ZOOM ---
+// --- REJILLA VISUAL ---
 function updateGrid() {
     gridLayer.clearLayers();
-    if (mymap.getZoom() < 17 || !rawGeoData) return;
+    if (mymap.getZoom() < 16 || !rawGeoData) return;
 
     const mapBounds = mymap.getBounds();
     const hit = leafletPip.pointInLayer([mapBounds.getCenter().lng, mapBounds.getCenter().lat], L.geoJSON(rawGeoData));
@@ -138,19 +152,17 @@ function updateGrid() {
 
         for (let i = 0; i < 24; i++) {
             for (let j = 0; j < 24; j++) {
-                let s = b.getSouth() + (j * stepLat);
-                let w = b.getWest() + (i * stepLng);
-                let n = s + stepLat;
-                let e = w + stepLng;
+                let s = b.getSouth() + (j * stepLat), w = b.getWest() + (i * stepLng);
+                let n = s + stepLat, e = w + stepLng;
                 
                 if (mapBounds.intersects([[s, w], [n, e]])) {
-                    // Dibujar rejilla micro completa al hacer mucho zoom
-                    L.rectangle([[s, w], [n, e]], {color: "#bdc3c7", weight: 0.5, fillOpacity: 0, interactive: false}).addTo(gridLayer);
+                    // Rejilla Micro en Azul Claro
+                    L.rectangle([[s, w], [n, e]], {color: "#3498db", weight: 0.8, fillOpacity: 0, interactive: false}).addTo(gridLayer);
                     
-                    if (mymap.getZoom() >= 19) {
-                        let micro = getMicroData(s + stepLat/2, w + stepLng/2, b);
+                    if (mymap.getZoom() >= 18) {
+                        const micro = getHierarchicalCode(s + stepLat/2, w + stepLng/2, b);
                         L.marker([s + stepLat/2, w + stepLng/2], {
-                            icon: L.divIcon({className: 'grid-label', html: micro.code, iconSize: [35, 10]}),
+                            icon: L.divIcon({className: 'grid-label', html: micro.micro, iconSize: [40, 10]}),
                             interactive: false
                         }).addTo(gridLayer);
                     }
@@ -161,13 +173,6 @@ function updateGrid() {
 }
 
 mymap.on('moveend zoomend', updateGrid);
-
-L.control.layers(null, {
-    "Zonas Macro": zonasLayer,
-    "Rutas": rutasLayer,
-    "Estafetas": estafetasLayer,
-    "Rejilla Micro": gridLayer
-}, {collapsed: false}).addTo(mymap);
 </script>
 </body>
 </html>
