@@ -1,29 +1,36 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SISTEMA POSTAL DE PANAMÁ - JERÁRQUICO</title>
+    <title>SISTEMA POSTAL DE PANAMÁ - PRO</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
         body, html, #mapid { width: 100%; height: 100%; margin: 0; padding: 0; font-family: 'Arial', sans-serif; }
         .map-title { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 4000; text-align: center; pointer-events: none; width: 90%; }
-        .map-title h1 { margin: 0; font-size: 20px; color: #2c3e50; font-weight: bold; text-shadow: 0 0 5px white; }
-        .search-container { position: absolute; top: 10px; right: 10px; z-index: 3000; display: flex; background: white; padding: 5px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); width: 260px; }
-        input#search-input { flex: 1; border: none; padding: 8px; font-size: 16px; outline: none; }
-        button#search-btn { background: #2c3e50; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; }
-        .btn-nav { display: inline-block; margin-top: 10px; padding: 8px 15px; background-color: #3498db; color: white !important; text-decoration: none !important; border-radius: 5px; font-weight: bold; font-size: 12px; border:none; cursor:pointer;}
-        .grid-label { font-size: 10px; font-weight: bold; color: #2980b9; pointer-events: none; text-shadow: 0 0 3px white; text-align: center; }
+        .map-title h1 { margin: 0; font-size: 18px; color: #2c3e50; font-weight: bold; text-shadow: 0 0 5px white; }
+        
+        .search-container { position: absolute; top: 10px; right: 10px; z-index: 3000; display: flex; background: white; padding: 5px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); width: 250px; }
+        input#search-input { flex: 1; border: none; padding: 8px; font-size: 14px; outline: none; }
+        
+        .btn-nav, .btn-ws { display: inline-block; margin-top: 8px; padding: 8px 12px; color: white !important; text-decoration: none !important; border-radius: 5px; font-weight: bold; font-size: 11px; border:none; cursor:pointer; }
+        .btn-nav { background-color: #3498db; margin-right: 5px; }
+        .btn-ws { background-color: #25D366; }
+        
+        .grid-label { font-size: 10px; font-weight: bold; color: #1a5276; pointer-events: none; text-shadow: 0 0 3px white; text-align: center; }
         .locate-button { background: white; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 5px; font-size: 18px; border: 2px solid rgba(0,0,0,0.2); }
         .leaflet-top.leaflet-right { top: 65px !important; }
+        
+        /* Subir el popup para que no tape el cuadro clicado */
+        .leaflet-popup { margin-bottom: 40px; }
     </style>
 </head>
 <body>
 
 <div class="map-title"><h1>SISTEMA POSTAL DE PANAMÁ</h1></div>
 <div class="search-container">
-    <input type="text" id="search-input" placeholder="A6199-TB259-H4">
-    <button id="search-btn">IR</button>
+    <input type="text" id="search-input" placeholder="Buscar código...">
+    <button id="search-btn" style="cursor:pointer">IR</button>
 </div>
 <div id="mapid"></div>
 
@@ -38,25 +45,34 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mymap);
 // Capas
 const gridLayer = L.layerGroup().addTo(mymap);
 const selectionLayer = L.layerGroup().addTo(mymap);
-let zonasLayer = L.layerGroup().addTo(mymap);
+let zonasGeoLayer = L.layerGroup().addTo(mymap); // estafetas.geojson (Polígonos)
+let cuadriculaLayer = L.layerGroup().addTo(mymap); // cuadricula.geojson
 let rutasLayer = L.layerGroup().addTo(mymap);
-let estafetasLayer = L.layerGroup().addTo(mymap);
-let rawGeoData = null;
+let estafetasPointsLayer = L.layerGroup().addTo(mymap);
 
+let rawCuadricula = null;
 const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ"; 
 
-// --- FUNCIÓN DETERMINISTA DE CÓDIGOS ---
-function getHierarchicalCode(lat, lon, macroBounds) {
+// --- LÓGICA DE OFUSCACIÓN (DETERMINISTA PERO DESORDENADA) ---
+function getNanoOfuscado(nix, niy) {
+    // Algoritmo simple de "salto" para desordenar la secuencia
+    const index = (nix * 7 + niy * 13) % 24; 
+    const letra = ALFABETO[index];
+    const numero = (nix + niy * 3) % 10;
+    return `${letra}${numero}`;
+}
+
+function getHierarchicalData(lat, lon, macroBounds) {
     const sw = macroBounds.getSouthWest();
     const ne = macroBounds.getNorthEast();
     
-    // Nivel Micro (24x24)
+    // Micro (24x24)
     const stepX = (ne.lng - sw.lng) / 24;
     const stepY = (ne.lat - sw.lat) / 24;
     const ix = Math.floor((lon - sw.lng) / stepX);
     const iy = Math.floor((lat - sw.lat) / stepY);
 
-    // Nivel Nano (10x10 dentro del micro seleccionado)
+    // Nano (10x10)
     const microSW_lng = sw.lng + (ix * stepX);
     const microSW_lat = sw.lat + (iy * stepY);
     const nanoStepX = stepX / 10;
@@ -64,79 +80,85 @@ function getHierarchicalCode(lat, lon, macroBounds) {
     const nix = Math.floor((lon - microSW_lng) / nanoStepX);
     const niy = Math.floor((lat - microSW_lat) / nanoStepY);
 
-    const microRect = [[microSW_lat, microSW_lng], [microSW_lat + stepY, microSW_lng + stepX]];
-    const nanoRect = [
-        [microSW_lat + (niy * nanoStepY), microSW_lng + (nix * nanoStepX)],
-        [microSW_lat + ((niy + 1) * nanoStepY), microSW_lng + ((nix + 1) * nanoStepX)]
-    ];
-
     return {
         micro: `${ALFABETO[ix] || 'A'}${ALFABETO[iy] || 'A'}${nix}${niy}${Math.floor((nix+niy)/2)}`,
-        nano: `${ALFABETO[nix] || 'A'}${niy}`,
-        microRect: microRect,
-        nanoRect: nanoRect
+        nano: getNanoOfuscado(nix, niy),
+        microRect: [[microSW_lat, microSW_lng], [microSW_lat + stepY, microSW_lng + stepX]],
+        nanoRect: [[microSW_lat + (niy * nanoStepY), microSW_lng + (nix * nanoStepX)], [microSW_lat + ((niy + 1) * nanoStepY), microSW_lng + ((nix + 1) * nanoStepX)]]
     };
 }
 
 // --- CARGA DE CAPAS ---
+$.getJSON("estafetas.geojson", d => L.geoJSON(d, {style:{color:"#8e44ad", weight:2, fillOpacity:0.2}}).addTo(zonasGeoLayer));
+
 $.getJSON("cuadricula.geojson", function(data) {
-    rawGeoData = data;
+    rawCuadricula = data;
     L.geoJSON(data, {
-        style: { color: "#2c3e50", weight: 2, fillOpacity: 0.1 },
+        style: { color: "#2c3e50", weight: 1.5, fillOpacity: 0.05 },
         onEachFeature: (f, l) => {
             mymap.on('zoomend', () => {
                 const z = mymap.getZoom();
-                l.setStyle({ fillOpacity: z >= 16 ? 0 : 0.1, weight: z >= 16 ? 0.5 : 2 });
+                l.setStyle({ fillOpacity: z >= 16 ? 0 : 0.05, weight: z >= 16 ? 0.3 : 1.5 });
             });
         }
-    }).addTo(zonasLayer);
+    }).addTo(cuadriculaLayer);
 });
 
 $.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style:{color:"#e74c3c", weight:3}}).addTo(rutasLayer));
-$.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:7, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasLayer));
+$.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:7, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasPointsLayer));
 
-// --- CLICK CON LÓGICA DE ZOOM ---
+// --- CLICK EVENT ---
 mymap.on("click", function (e) {
     selectionLayer.clearLayers();
-    if (!rawGeoData) return;
+    if (!rawCuadricula) return;
 
-    const hit = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawGeoData));
+    const hit = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawCuadricula));
     
     if (hit.length === 0) {
-        L.popup().setLatLng(e.latlng).setContent("<b>ZONA NO DEFINIDA</b>").openOn(mymap);
+        L.popup().setLatLng(e.latlng).setContent("<b>ZONA NO REGISTRADA</b>").openOn(mymap);
         return;
     }
 
     const macroID = hit[0].feature.properties.codigo || "S/N";
     const macroBounds = L.geoJSON(hit[0].feature).getBounds();
-    const data = getHierarchicalCode(e.latlng.lat, e.latlng.lng, macroBounds);
-    const zoom = mymap.getZoom();
+    const data = getHierarchicalData(e.latlng.lat, e.latlng.lng, macroBounds);
+    const z = mymap.getZoom();
 
+    let titulo = "ZONAS POSTALES";
     let finalCode = macroID;
-    if (zoom >= 14) finalCode += `-${data.micro}`;
-    if (zoom >= 17) finalCode += `-${data.nano}`;
+    
+    if (z >= 14 && z < 17) {
+        titulo = "AREA POSTAL";
+        finalCode += `-${data.micro}`;
+        L.rectangle(data.microRect, {color: "#3498db", weight: 3, fillOpacity: 0.2}).addTo(selectionLayer);
+    } else if (z >= 17) {
+        titulo = "CODIGO POSTAL";
+        finalCode += `-${data.micro}-${data.nano}`;
+        L.rectangle(data.nanoRect, {color: "#e67e22", weight: 4, fillOpacity: 0.5}).addTo(selectionLayer);
+    }
 
-    // Dibujo visual
-    if (zoom >= 14) L.rectangle(data.microRect, {color: "#3498db", weight: 1, fillOpacity: 0.1}).addTo(selectionLayer);
-    if (zoom >= 17) L.rectangle(data.nanoRect, {color: "#e67e22", weight: 2, fillOpacity: 0.4}).addTo(selectionLayer);
+    const wsMsg = encodeURIComponent(`Mi ubicación postal en Panamá es: ${finalCode}\nCoord: ${e.latlng.lat},${e.latlng.lng}`);
 
     L.popup().setLatLng(e.latlng).setContent(`
-        <div style="text-align:center;">
-            <small>CÓDIGO SEGÚN NIVEL DE ZOOM</small><br>
-            <span style="font-size:18px; font-weight:bold; color:#2c3e50;">${finalCode}</span><br>
-            <button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${e.latlng.lat},${e.latlng.lng}')">📍 NAVEGAR</button>
+        <div style="text-align:center; min-width:180px;">
+            <small style="color:#7f8c8d; font-weight:bold;">${titulo}</small><br>
+            <span style="font-size:16px; font-weight:bold; color:#2c3e50;">${finalCode}</span><br>
+            <div style="margin-top:5px;">
+                <button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${e.latlng.lat},${e.latlng.lng}')">📍 MAPS</button>
+                <button class="btn-ws" onclick="window.open('https://wa.me/?text=${wsMsg}')">💬 WHATSAPP</button>
+            </div>
         </div>
     `).openOn(mymap);
 });
 
-// --- REJILLA AUTOMÁTICA ---
+// --- REJILLA VISUAL ---
 function updateGrid() {
     gridLayer.clearLayers();
     const z = mymap.getZoom();
-    if (z < 16 || !rawGeoData) return;
+    if (z < 16 || !rawCuadricula) return;
 
     const mapBounds = mymap.getBounds();
-    const hit = leafletPip.pointInLayer([mapBounds.getCenter().lng, mapBounds.getCenter().lat], L.geoJSON(rawGeoData));
+    const hit = leafletPip.pointInLayer([mapBounds.getCenter().lng, mapBounds.getCenter().lat], L.geoJSON(rawCuadricula));
     
     if (hit.length > 0) {
         const b = L.geoJSON(hit[0].feature).getBounds();
@@ -148,11 +170,8 @@ function updateGrid() {
                 let s = b.getSouth() + (j * stepY), w = b.getWest() + (i * stepX);
                 let n = s + stepY, e = w + stepX;
                 if (mapBounds.intersects([[s, w], [n, e]])) {
-                    L.rectangle([[s, w], [n, e]], {color: "#3498db", weight: 0.5, fillOpacity: 0, interactive: false}).addTo(gridLayer);
-                    if (z >= 18) {
-                        const code = getHierarchicalCode(s + stepY/2, w + stepX/2, b).micro;
-                        L.marker([s + stepY/2, w + stepX/2], {icon: L.divIcon({className:'grid-label', html:code, iconSize:[40,10]}), interactive:false}).addTo(gridLayer);
-                    }
+                    // Rejilla más gruesa y visible
+                    L.rectangle([[s, w], [n, e]], {color: "#3498db", weight: 1.5, fillOpacity: 0, interactive: false}).addTo(gridLayer);
                 }
             }
         }
@@ -160,7 +179,7 @@ function updateGrid() {
 }
 mymap.on('moveend zoomend', updateGrid);
 
-// --- CONTROLES ---
+// --- CONTROLES Y GPS ---
 const LocateControl = L.Control.extend({
     options: { position: 'topleft' },
     onAdd: function() {
@@ -174,9 +193,10 @@ const LocateControl = L.Control.extend({
 mymap.addControl(new LocateControl());
 
 L.control.layers(null, {
-    "Zonas Macro": zonasLayer,
-    "Rutas": rutasLayer,
-    "Estafetas": estafetasLayer,
+    "Polígonos Zonas": zonasGeoLayer,
+    "Cuadrícula Macro": cuadriculaLayer,
+    "Rutas Postales": rutasLayer,
+    "Estafetas (Puntos)": estafetasPointsLayer,
     "Rejilla Micro": gridLayer
 }, {collapsed: false}).addTo(mymap);
 
