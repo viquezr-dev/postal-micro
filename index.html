@@ -22,7 +22,7 @@
         .leaflet-top.leaflet-right { top: 65px !important; }
         
         /* Subir el popup para que no tape el cuadro clicado */
-        .leaflet-popup { margin-bottom: 40px; }
+        .leaflet-popup { margin-bottom: 45px; }
     </style>
 </head>
 <body>
@@ -45,7 +45,7 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mymap);
 // Capas
 const gridLayer = L.layerGroup().addTo(mymap);
 const selectionLayer = L.layerGroup().addTo(mymap);
-let zonasGeoLayer = L.layerGroup().addTo(mymap); // estafetas.geojson (Polígonos)
+let zonasGeoLayer = L.layerGroup().addTo(mymap); // estafetas.geojson
 let cuadriculaLayer = L.layerGroup().addTo(mymap); // cuadricula.geojson
 let rutasLayer = L.layerGroup().addTo(mymap);
 let estafetasPointsLayer = L.layerGroup().addTo(mymap);
@@ -53,9 +53,8 @@ let estafetasPointsLayer = L.layerGroup().addTo(mymap);
 let rawCuadricula = null;
 const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ"; 
 
-// --- LÓGICA DE OFUSCACIÓN (DETERMINISTA PERO DESORDENADA) ---
+// --- LÓGICA DE OFUSCACIÓN NANO ---
 function getNanoOfuscado(nix, niy) {
-    // Algoritmo simple de "salto" para desordenar la secuencia
     const index = (nix * 7 + niy * 13) % 24; 
     const letra = ALFABETO[index];
     const numero = (nix + niy * 3) % 10;
@@ -66,13 +65,11 @@ function getHierarchicalData(lat, lon, macroBounds) {
     const sw = macroBounds.getSouthWest();
     const ne = macroBounds.getNorthEast();
     
-    // Micro (24x24)
     const stepX = (ne.lng - sw.lng) / 24;
     const stepY = (ne.lat - sw.lat) / 24;
     const ix = Math.floor((lon - sw.lng) / stepX);
     const iy = Math.floor((lat - sw.lat) / stepY);
 
-    // Nano (10x10)
     const microSW_lng = sw.lng + (ix * stepX);
     const microSW_lat = sw.lat + (iy * stepY);
     const nanoStepX = stepX / 10;
@@ -88,9 +85,14 @@ function getHierarchicalData(lat, lon, macroBounds) {
     };
 }
 
-// --- CARGA DE CAPAS ---
-$.getJSON("estafetas.geojson", d => L.geoJSON(d, {style:{color:"#8e44ad", weight:2, fillOpacity:0.2}}).addTo(zonasGeoLayer));
+// --- CARGA DE CAPAS CON ESTILOS MEJORADOS ---
 
+// Polígonos de Zonas - Gris con líneas negras
+$.getJSON("estafetas.geojson", d => L.geoJSON(d, {
+    style: { color: "#333333", weight: 1.5, fillOpacity: 0.15, fillColor: "#999999" }
+}).addTo(zonasGeoLayer));
+
+// Cuadrícula Macro
 $.getJSON("cuadricula.geojson", function(data) {
     rawCuadricula = data;
     L.geoJSON(data, {
@@ -104,8 +106,11 @@ $.getJSON("cuadricula.geojson", function(data) {
     }).addTo(cuadriculaLayer);
 });
 
+// Rutas y Estafetas
 $.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style:{color:"#e74c3c", weight:3}}).addTo(rutasLayer));
-$.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:7, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasPointsLayer));
+$.getJSON("estafetasp.geojson", d => L.geoJSON(d, {
+    pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:7, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})
+}).addTo(estafetasPointsLayer));
 
 // --- CLICK EVENT ---
 mymap.on("click", function (e) {
@@ -137,7 +142,7 @@ mymap.on("click", function (e) {
         L.rectangle(data.nanoRect, {color: "#e67e22", weight: 4, fillOpacity: 0.5}).addTo(selectionLayer);
     }
 
-    const wsMsg = encodeURIComponent(`Mi ubicación postal en Panamá es: ${finalCode}\nCoord: ${e.latlng.lat},${e.latlng.lng}`);
+    const wsMsg = encodeURIComponent(`Mi ubicación postal es: ${finalCode}\nCoord: ${e.latlng.lat},${e.latlng.lng}`);
 
     L.popup().setLatLng(e.latlng).setContent(`
         <div style="text-align:center; min-width:180px;">
@@ -170,7 +175,6 @@ function updateGrid() {
                 let s = b.getSouth() + (j * stepY), w = b.getWest() + (i * stepX);
                 let n = s + stepY, e = w + stepX;
                 if (mapBounds.intersects([[s, w], [n, e]])) {
-                    // Rejilla más gruesa y visible
                     L.rectangle([[s, w], [n, e]], {color: "#3498db", weight: 1.5, fillOpacity: 0, interactive: false}).addTo(gridLayer);
                 }
             }
@@ -193,7 +197,7 @@ const LocateControl = L.Control.extend({
 mymap.addControl(new LocateControl());
 
 L.control.layers(null, {
-    "Polígonos Zonas": zonasGeoLayer,
+    "Polígonos Zonas (Gris)": zonasGeoLayer,
     "Cuadrícula Macro": cuadriculaLayer,
     "Rutas Postales": rutasLayer,
     "Estafetas (Puntos)": estafetasPointsLayer,
