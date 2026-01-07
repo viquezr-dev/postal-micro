@@ -71,7 +71,54 @@ function getHierarchicalData(lat, lon, macroBounds) {
         nanoRect: [[microS + (niy * nanoStepY), microW + (nix * nanoStepX)], [microS + ((niy + 1) * nanoStepY), microW + ((nix + 1) * nanoStepX)]]
     };
 }
+// 5. REJILLA DINÁMICA (CORREGIDA)
+function updateGrid() {
+    gridLayer.clearLayers();
+    const z = mymap.getZoom();
+    
+    // Solo mostrar si la capa está activa en el control de capas y el zoom es alto
+    if (z < 16 || !rawCuadricula || !mymap.hasLayer(gridLayer)) return;
 
+    const mBounds = mymap.getBounds();
+    // Detectar qué cuadro macro está en el centro de la pantalla
+    const center = mBounds.getCenter();
+    const hit = leafletPip.pointInLayer([center.lng, center.lat], L.geoJSON(rawCuadricula));
+    
+    if (hit.length > 0) {
+        const b = L.geoJSON(hit[0].feature).getBounds();
+        const stepX = (b.getEast() - b.getWest()) / 24;
+        const stepY = (b.getNorth() - b.getSouth()) / 24;
+
+        // Dibujar los 24x24 cuadros micro
+        for (let i = 0; i < 24; i++) {
+            for (let j = 0; j < 24; j++) {
+                let s = b.getSouth() + (j * stepY);
+                let w = b.getWest() + (i * stepX);
+                let n = s + stepY;
+                let e = w + stepX;
+
+                // Solo dibujar si el cuadro está visible en la pantalla actual para ahorrar memoria
+                if (mBounds.intersects([[s, w], [n, e]])) {
+                    L.rectangle([[s, w], [n, e]], {
+                        color: "#3498db", 
+                        weight: 0.5, 
+                        fillOpacity: 0.05, 
+                        interactive: false 
+                    }).addTo(gridLayer);
+                }
+            }
+        }
+    }
+}
+
+// Activar la actualización al mover el mapa o cambiar zoom
+mymap.on('moveend zoomend', updateGrid);
+
+// También activar si el usuario marca/desmarca la capa en el panel
+mymap.on('overlayadd', function(e) {
+    if (e.name === "Rejilla Dinámica") updateGrid();
+});
+    
 // CARGA DE DATOS
 $.getJSON("estafetas.geojson", d => {
     rawZonas = d;
@@ -180,3 +227,4 @@ L.control.layers(null, {
 </script>
 </body>
 </html>
+
