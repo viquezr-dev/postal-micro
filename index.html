@@ -109,30 +109,41 @@ $.getJSON("estafetasp.geojson", d => L.geoJSON(d, {
 // 4. EVENTO CLICK
 mymap.on("click", function (e) {
     selectionLayer.clearLayers();
-    if (!rawCuadricula) return;
+    
+    // 1. Intentar buscar primero en la capa de Polígonos de Zonas (estafetas.geojson)
+    const hitZonas = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], zonasGeoLayer);
+    
+    // 2. Intentar buscar en la Cuadrícula Macro (como respaldo)
+    const hitCuadricula = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawCuadricula));
 
-    const hit = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawCuadricula));
-    if (hit.length === 0) {
+    // Si no toca nada, terminamos
+    if (hitZonas.length === 0 && hitCuadricula.length === 0) {
         L.popup({offset: [0, -20]}).setLatLng(e.latlng).setContent("<b>ZONA NO REGISTRADA</b>").openOn(mymap);
         return;
     }
 
-    const feature = hit[0].feature;
-    const macroID = feature.properties.codigo || "S/N";
-    const bounds = L.geoJSON(feature).getBounds();
-    const data = getHierarchicalData(e.latlng.lat, e.latlng.lng, bounds);
+    // PRIORIDAD: Usamos la data del polígono de zona si existe, si no, la cuadrícula
+    const featurePrincipal = hitZonas.length > 0 ? hitZonas[0].feature : hitCuadricula[0].feature;
+    const macroID = featurePrincipal.properties.codigo || "S/N";
+    
+    // Para los cálculos Micro/Nano siempre usamos los límites de la cuadrícula macro para mantener la geometría
+    const macroBounds = hitCuadricula.length > 0 ? 
+                        L.geoJSON(hitCuadricula[0].feature).getBounds() : 
+                        L.geoJSON(featurePrincipal).getBounds();
+
+    const data = getHierarchicalData(e.latlng.lat, e.latlng.lng, macroBounds);
     const z = mymap.getZoom();
 
     let titulo = "ZONAS POSTALES", finalCode = macroID;
     
-    // RESALTE NIVEL MACRO (Siempre se muestra si no hay micro/nano activo)
+    // RESALTE NIVEL MACRO: Pintamos el polígono real de la zona
     if (z < 14) {
-        L.geoJSON(feature, {
-            style: { color: "#2c3e50", weight: 4, fillOpacity: 0.3, dashArray: '5, 5' }
+        L.geoJSON(featurePrincipal, {
+            style: { color: "#333333", weight: 3, fillOpacity: 0.4, fillColor: "#888888" }
         }).addTo(selectionLayer);
     }
 
-    // RESALTE NIVEL MICRO
+    // RESALTE NIVEL MICRO (Zoom 14 a 17)
     if (z >= 14) {
         titulo = (z >= 17) ? "CÓDIGO POSTAL" : "ÁREA POSTAL";
         finalCode += `-${data.micro}`;
@@ -141,7 +152,7 @@ mymap.on("click", function (e) {
         }
     }
 
-    // RESALTE NIVEL NANO
+    // RESALTE NIVEL NANO (Zoom > 17)
     if (z >= 17) {
         finalCode += `-${data.nano}`;
         L.rectangle(data.nanoRect, {color: "#e67e22", weight: 5, fillOpacity: 0.5}).addTo(selectionLayer);
@@ -150,11 +161,11 @@ mymap.on("click", function (e) {
     const wsMsg = encodeURIComponent(`📍 Mi ubicación Postal: ${finalCode}\nGPS: ${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`);
 
     L.popup({ offset: [0, -55] }).setLatLng(e.latlng).setContent(`
-        <div style="text-align:center; min-width:190px;">
+        <div style="text-align:center; min-width:180px;">
             <small style="color:#7f8c8d; font-weight:bold;">${titulo}</small><br>
             <span style="font-size:16px; font-weight:bold; color:#2c3e50;">${finalCode}</span><br>
             <div style="margin-top:5px;">
-                <button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${e.latlng.lat},${e.latlng.lng}')">📍 MAPS</button>
+                <button class="btn-nav" onclick="window.open('https://www.google.com/maps/search/?api=1&query=${e.latlng.lat},${e.latlng.lng}')">📍 MAPS</button>
                 <button class="btn-ws" onclick="window.open('https://wa.me/?text=${wsMsg}')">💬 WHATSAPP</button>
             </div>
         </div>
@@ -238,4 +249,5 @@ L.control.layers(null, {
 </script>
 </body>
 </html>
+
 
