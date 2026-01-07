@@ -117,17 +117,31 @@ mymap.on("click", function (e) {
         return;
     }
 
-    const macroID = hit[0].feature.properties.codigo || "S/N";
-    const data = getHierarchicalData(e.latlng.lat, e.latlng.lng, L.geoJSON(hit[0].feature).getBounds());
+    const feature = hit[0].feature;
+    const macroID = feature.properties.codigo || "S/N";
+    const bounds = L.geoJSON(feature).getBounds();
+    const data = getHierarchicalData(e.latlng.lat, e.latlng.lng, bounds);
     const z = mymap.getZoom();
 
     let titulo = "ZONAS POSTALES", finalCode = macroID;
     
+    // RESALTE NIVEL MACRO (Siempre se muestra si no hay micro/nano activo)
+    if (z < 14) {
+        L.geoJSON(feature, {
+            style: { color: "#2c3e50", weight: 4, fillOpacity: 0.3, dashArray: '5, 5' }
+        }).addTo(selectionLayer);
+    }
+
+    // RESALTE NIVEL MICRO
     if (z >= 14) {
         titulo = (z >= 17) ? "CÓDIGO POSTAL" : "ÁREA POSTAL";
         finalCode += `-${data.micro}`;
-        if (z < 17) L.rectangle(data.microRect, {color: "#3498db", weight: 4, fillOpacity: 0.2}).addTo(selectionLayer);
+        if (z < 17) {
+            L.rectangle(data.microRect, {color: "#3498db", weight: 4, fillOpacity: 0.2}).addTo(selectionLayer);
+        }
     }
+
+    // RESALTE NIVEL NANO
     if (z >= 17) {
         finalCode += `-${data.nano}`;
         L.rectangle(data.nanoRect, {color: "#e67e22", weight: 5, fillOpacity: 0.5}).addTo(selectionLayer);
@@ -140,7 +154,7 @@ mymap.on("click", function (e) {
             <small style="color:#7f8c8d; font-weight:bold;">${titulo}</small><br>
             <span style="font-size:16px; font-weight:bold; color:#2c3e50;">${finalCode}</span><br>
             <div style="margin-top:5px;">
-                <button class="btn-nav" onclick="window.open('https://www.google.com/maps/search/?api=1&query=${e.latlng.lat},${e.latlng.lng}')">📍 MAPS</button>
+                <button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${e.latlng.lat},${e.latlng.lng}')">📍 MAPS</button>
                 <button class="btn-ws" onclick="window.open('https://wa.me/?text=${wsMsg}')">💬 WHATSAPP</button>
             </div>
         </div>
@@ -224,3 +238,4 @@ L.control.layers(null, {
 </script>
 </body>
 </html>
+
