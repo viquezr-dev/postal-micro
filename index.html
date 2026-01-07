@@ -22,7 +22,7 @@
         .leaflet-top.leaflet-right { top: 65px !important; }
         
         /* Subir el popup para que no tape el cuadro clicado */
-        .leaflet-popup { margin-bottom: 45px; }
+        .leaflet-popup { margin-bottom: 60px; }
     </style>
 </head>
 <body>
@@ -120,7 +120,10 @@ mymap.on("click", function (e) {
     const hit = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawCuadricula));
     
     if (hit.length === 0) {
-        L.popup().setLatLng(e.latlng).setContent("<b>ZONA NO REGISTRADA</b>").openOn(mymap);
+        L.popup()
+            .setLatLng(e.latlng)
+            .setContent("<b>ZONA NO REGISTRADA</b>")
+            .openOn(mymap);
         return;
     }
 
@@ -132,19 +135,26 @@ mymap.on("click", function (e) {
     let titulo = "ZONAS POSTALES";
     let finalCode = macroID;
     
+    // Dibujo y lógica de zoom
     if (z >= 14 && z < 17) {
         titulo = "AREA POSTAL";
         finalCode += `-${data.micro}`;
-        L.rectangle(data.microRect, {color: "#3498db", weight: 3, fillOpacity: 0.2}).addTo(selectionLayer);
+        L.rectangle(data.microRect, {color: "#3498db", weight: 4, fillOpacity: 0.2}).addTo(selectionLayer);
     } else if (z >= 17) {
         titulo = "CODIGO POSTAL";
         finalCode += `-${data.micro}-${data.nano}`;
-        L.rectangle(data.nanoRect, {color: "#e67e22", weight: 4, fillOpacity: 0.5}).addTo(selectionLayer);
+        L.rectangle(data.nanoRect, {color: "#e67e22", weight: 5, fillOpacity: 0.5}).addTo(selectionLayer);
     }
 
     const wsMsg = encodeURIComponent(`Mi ubicación postal es: ${finalCode}\nCoord: ${e.latlng.lat},${e.latlng.lng}`);
 
-    L.popup().setLatLng(e.latlng).setContent(`
+    // POPUP CON OFFSET PARA NO TAPAR EL CUADRO
+    L.popup({
+        offset: L.point(0, -50), // Empuja el globo 50 pixeles hacia arriba del punto exacto
+        closeButton: true
+    })
+    .setLatLng(e.latlng)
+    .setContent(`
         <div style="text-align:center; min-width:180px;">
             <small style="color:#7f8c8d; font-weight:bold;">${titulo}</small><br>
             <span style="font-size:16px; font-weight:bold; color:#2c3e50;">${finalCode}</span><br>
@@ -153,7 +163,8 @@ mymap.on("click", function (e) {
                 <button class="btn-ws" onclick="window.open('https://wa.me/?text=${wsMsg}')">💬 WHATSAPP</button>
             </div>
         </div>
-    `).openOn(mymap);
+    `)
+    .openOn(mymap);
 });
 
 // --- REJILLA VISUAL ---
@@ -207,3 +218,4 @@ L.control.layers(null, {
 </script>
 </body>
 </html>
+
