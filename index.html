@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SISTEMA POSTAL DE PANAMÁ - PRECISIÓN MICRO</title>
+    <title>SISTEMA POSTAL DE PANAMÁ</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
@@ -17,29 +17,27 @@
             text-shadow: 0 0 5px white, 0 0 10px white;
         }
 
-        /* Buscador */
         .search-container {
             position: absolute; top: 10px; right: 10px; z-index: 3000;
             display: flex; background: white; padding: 5px; border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2); width: 280px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2); width: 260px;
         }
-        input#search-input { flex: 1; border: none; padding: 8px; font-size: 14px; outline: none; width: 100%; }
+        input#search-input { flex: 1; border: none; padding: 8px; font-size: 16px; outline: none; width: 100%; }
         button#search-btn { background: #2c3e50; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; }
 
-        /* Popups y Botones */
         .btn-nav {
             display: inline-block; margin-top: 10px; padding: 8px 15px;
             background-color: #3498db; color: white !important; text-decoration: none !important;
             border-radius: 5px; font-weight: bold; font-size: 12px;
         }
-        .code-display { font-size: 20px; font-weight: bold; color: #e67e22; margin: 5px 0; display: block; }
 
         @media only screen and (max-width: 600px) {
             .map-title h1 { font-size: 14px; }
-            .search-container { width: 200px; top: 50px; right: 50%; transform: translateX(50%); }
+            .search-container { width: 180px; }
         }
 
         .leaflet-top.leaflet-right { top: 65px !important; }
+        .grid-label { font-size: 9px; font-weight: bold; color: #e67e22; pointer-events: none; text-shadow: 0 0 2px white; text-align: center; }
         .locate-button { background: white; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 5px; font-size: 18px; border: 2px solid rgba(0,0,0,0.2); }
     </style>
 </head>
@@ -50,7 +48,7 @@
 </div>
 
 <div class="search-container">
-    <input type="text" id="search-input" placeholder="Ej: M8599-BK502">
+    <input type="text" id="search-input" placeholder="Ej: M8599-AA001">
     <button id="search-btn">IR</button>
 </div>
 
@@ -61,106 +59,148 @@
 <script src="https://unpkg.com/@mapbox/leaflet-pip@latest/leaflet-pip.js"></script>
 
 <script>
-// --- CONFIGURACIÓN DE MAPA ---
-const mymap = L.map('mapid', { zoomControl: true }).setView([8.98, -79.52], 10);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
-}).addTo(mymap);
+// --- CONFIGURACIÓN INICIAL ---
+const mymap = L.map('mapid', { zoomControl: true }).setView([8.98, -79.52], 11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mymap);
 
-let macroLayer = L.layerGroup().addTo(mymap);
-let estafetaslLayer = L.layerGroup().addTo(mymap);
-let estafetaspLayer = L.layerGroup().addTo(mymap);
-let rawMacroData = null; // Aquí guardamos el GeoJSON de la cuadrícula
+const gridLayer = L.layerGroup().addTo(mymap);
+let zonasLayer = L.layerGroup().addTo(mymap);
+let rutasLayer = L.layerGroup().addTo(mymap);
+let estafetasLayer = L.layerGroup().addTo(mymap);
+let rawGeoData = null; 
 
-// --- LÓGICA DE NAVEGACIÓN ---
+// --- FUNCIONES DE APOYO ---
 function abrirNavegacion(lat, lon) {
     const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}&travelmode=driving`;
     window.open(url, '_blank');
 }
 
-// --- GENERADOR DE CÓDIGO MICRO (LLNNN) ---
+// Genera el sufijo LLNNN basado en la posición relativa dentro del cuadro macro
 function generarMicroCodigo(lat, lon, bounds) {
-    const ALFABETO = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ"; // 24 caracteres para evitar confusión O/I
     const sw = bounds.getSouthWest();
     const ne = bounds.getNorthEast();
     
-    // Normalizar posición dentro del cuadro (0 a 1)
     let xNorm = (lon - sw.lng) / (ne.lng - sw.lng);
     let yNorm = (lat - sw.lat) / (ne.lat - sw.lat);
     
-    xNorm = Math.max(0, Math.min(0.9999, xNorm));
-    yNorm = Math.max(0, Math.min(0.9999, yNorm));
+    xNorm = Math.max(0, Math.min(0.999, xNorm));
+    yNorm = Math.max(0, Math.min(0.999, yNorm));
 
-    // 2 Letras: X determina la primera, Y la segunda
-    let l1 = ALFABETO[Math.floor(xNorm * 26)];
-    let l2 = ALFABETO[Math.floor(yNorm * 26)];
-
-    // 3 Números: Combinación de alta precisión
-    let n1 = Math.floor(((xNorm * 26) % 1) * 10);
-    let n2 = Math.floor(((yNorm * 26) % 1) * 10);
-    let n3 = Math.floor((((xNorm + yNorm) * 260) % 1) * 10);
+    let l1 = ALFABETO[Math.floor(xNorm * 24)];
+    let l2 = ALFABETO[Math.floor(yNorm * 24)];
+    
+    // Generar 3 números de precisión
+    let n1 = Math.floor(((xNorm * 24) % 1) * 10);
+    let n2 = Math.floor(((yNorm * 24) % 1) * 10);
+    let n3 = Math.floor((((xNorm + yNorm) / 2) * 100) % 10);
 
     return `${l1}${l2}${n1}${n2}${n3}`;
 }
 
-// --- CARGA DE DATOS ---
+// --- CARGA DE CAPAS ---
 
-// 1. CARGAR TU CUADRICULA (Macro-GeoJSON)
+// 1. Polígonos de Cuadrícula (Zonas Macro)
 $.getJSON("cuadricula.geojson", function(data) {
-    rawMacroData = data;
+    rawGeoData = data;
     L.geoJSON(data, {
-        style: { color: "#2c3e50", weight: 1, fillOpacity: 0.05 }
-    }).addTo(macroLayer);
+        style: { color: "#2c3e50", weight: 2, fillOpacity: 0.1 },
+        onEachFeature: (f, l) => {
+            l.bindPopup(`<b>ZONA:</b> ${f.properties.codigo || "S/N"}`);
+        }
+    }).addTo(zonasLayer);
 });
 
-// 2. Líneas y Estafetas (Tus capas adicionales)
+// 2. Líneas (Rutas)
 $.getJSON("estafetasl.geojson", function(data) {
-    L.geoJSON(data, { style: { color: "#e74c3c", weight: 2 } }).addTo(estafetaslLayer);
+    L.geoJSON(data, {
+        style: { color: "#e74c3c", weight: 3 },
+        onEachFeature: (f, l) => {
+            let n = f.properties.RUTA || f.properties.name || "Ruta";
+            l.bindPopup(`<b>RUTA:</b> ${n}`);
+        }
+    }).addTo(rutasLayer);
 });
 
+// 3. Puntos (Estafetas)
 $.getJSON("estafetasp.geojson", function(data) {
     L.geoJSON(data, {
-        pointToLayer: (f, ll) => L.circleMarker(ll, {radius:6, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1}),
+        pointToLayer: (f, ll) => L.circleMarker(ll, {radius:8, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1}),
         onEachFeature: (f, l) => {
-            let n = f.properties.ESTAF_NAME || "Estafeta";
-            l.bindPopup(`<b>ESTAFETA:</b><br>${n}<br><button class="btn-nav" onclick="abrirNavegacion(${l.getLatLng().lat}, ${l.getLatLng().lng})">📍 IR</button>`);
+            let n = f.properties.ESTAF_NAME || f.properties.name || "Estafeta";
+            l.bindPopup(`<div style="text-align:center;"><b>ESTAFETA:</b><br>${n}<br><a href="#" class="btn-nav" onclick="abrirNavegacion(${l.getLatLng().lat}, ${l.getLatLng().lng})">📍 NAVEGAR</a></div>`);
         }
-    }).addTo(estafetaspLayer);
+    }).addTo(estafetasLayer);
 });
 
-// --- CLIC EN EL MAPA ---
+// --- CLIC EN MAPA ---
 mymap.on("click", function (e) {
-    let macroID = "ZONA EXTERIOR";
-    let microID = "00000";
-
-    if (rawMacroData) {
-        // Buscamos el polígono de la cuadrícula que contiene el clic
-        const hit = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawMacroData));
-        
+    let macroID = "ZONA NO DEFINIDA";
+    let microID = "";
+    
+    if (rawGeoData) {
+        const hit = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawGeoData));
         if (hit.length > 0) {
-            // USAMOS LA PROPIEDAD DE TU GEOJSON (Ajustar si se llama diferente a 'ID')
-            macroID = hit[0].feature.properties.ID || hit[0].feature.properties.CODIGO || "AREA";
-            
-            // Calculamos límites del cuadro actual para la precisión micro
-            const tempLayer = L.geoJSON(hit[0].feature);
-            microID = generarMicroCodigo(e.latlng.lat, e.latlng.lng, tempLayer.getBounds());
+            macroID = hit[0].feature.properties.codigo || "S/N";
+            const bounds = L.geoJSON(hit[0].feature).getBounds();
+            microID = "-" + generarMicroCodigo(e.latlng.lat, e.latlng.lng, bounds);
         }
     }
 
-    const fullCode = `${macroID}-${microID}`;
-
-    L.popup()
-        .setLatLng(e.latlng)
-        .setContent(`
-            <div style="text-align:center;">
-                <small>CÓDIGO POSTAL DINÁMICO</small><br>
-                <span class="code-display">${fullCode}</span><br>
-                <a href="#" class="btn-nav" onclick="abrirNavegacion(${e.latlng.lat}, ${e.latlng.lng})">📍 NAVEGAR AQUÍ</a>
-            </div>
-        `).openOn(mymap);
+    let contenido = `
+        <div style="text-align:center;">
+            <b>CÓDIGO POSTAL</b><br>
+            <span style="font-size:18px; font-weight:bold; color:#e67e22;">${macroID}${microID}</span><br>
+            <a href="#" class="btn-nav" onclick="abrirNavegacion(${e.latlng.lat}, ${e.latlng.lng})">📍 NAVEGAR AQUÍ</a>
+        </div>`;
+    
+    L.popup().setLatLng(e.latlng).setContent(contenido).openOn(mymap);
 });
 
-// --- BOTÓN GPS ---
+// --- REJILLA MICRO (Visual al hacer Zoom) ---
+function updateGrid() {
+    gridLayer.clearLayers();
+    if (mymap.getZoom() < 16 || !rawGeoData) return;
+
+    const bounds = mymap.getBounds();
+    // Buscamos qué cuadros macro están visibles para dibujar sus etiquetas micro
+    const hits = leafletPip.pointInLayer([bounds.getCenter().lng, bounds.getCenter().lat], L.geoJSON(rawGeoData));
+    
+    if (hits.length > 0) {
+        const feature = hits[0].feature;
+        const macroID = feature.properties.codigo || "";
+        const b = L.geoJSON(feature).getBounds();
+        
+        // Dividimos el cuadro macro en una rejilla visual de 24x24 (solo si hay mucho zoom)
+        if (mymap.getZoom() >= 18) {
+            const stepLng = (b.getEast() - b.getWest()) / 24;
+            const stepLat = (b.getNorth() - b.getSouth()) / 24;
+
+            for (let i = 0; i < 24; i += 2) { // i+2 para no saturar visualmente
+                for (let j = 0; j < 24; j += 2) {
+                    let lat = b.getSouth() + (j * stepLat) + (stepLat/2);
+                    let lon = b.getWest() + (i * stepLng) + (stepLng/2);
+                    
+                    if (bounds.contains([lat, lon])) {
+                        let code = generarMicroCodigo(lat, lon, b);
+                        L.marker([lat, lon], {
+                            icon: L.divIcon({
+                                className: 'grid-label',
+                                html: code,
+                                iconSize: [40, 15]
+                            }),
+                            interactive: false
+                        }).addTo(gridLayer);
+                    }
+                }
+            }
+        }
+    }
+}
+
+mymap.on('moveend zoomend', updateGrid);
+
+// --- GPS Y CONTROLES ---
 const LocateControl = L.Control.extend({
     options: { position: 'topleft' },
     onAdd: function() {
@@ -169,27 +209,20 @@ const LocateControl = L.Control.extend({
         button.innerHTML = '🎯';
         L.DomEvent.on(button, 'click', e => { 
             L.DomEvent.stopPropagation(e); 
-            mymap.locate({setView: true, maxZoom: 18}); 
+            mymap.locate({enableHighAccuracy: true, setView: true, maxZoom: 18}); 
         });
         return container;
     }
 });
 mymap.addControl(new LocateControl());
 
-// --- BUSCADOR (Básico por coordenadas o podrías ampliarlo) ---
-document.getElementById('search-btn').onclick = function() {
-    const query = document.getElementById('search-input').value.trim();
-    if(query === "") return;
-    alert("Buscando ubicación para: " + query + "\n(Implementar lógica de búsqueda inversa si es necesario)");
-};
-
-// Control de Capas
 const overlayMaps = {
-    "Cuadrícula Macro": macroLayer,
-    "Rutas": estafetaslLayer,
-    "Estafetas": estafetaspLayer
+    "Zonas Macro": zonasLayer,
+    "Rutas": rutasLayer,
+    "Estafetas": estafetasLayer,
+    "Etiquetas Micro": gridLayer
 };
-L.control.layers(null, overlayMaps, {collapsed: true}).addTo(mymap);
+L.control.layers(null, overlayMaps, {collapsed:false}).addTo(mymap);
 
 </script>
 </body>
