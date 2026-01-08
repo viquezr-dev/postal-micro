@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SISTEMA POSTAL DE PANAMÁ - FIX COMPLETO</title>
+    <title>SISTEMA POSTAL DE PANAMÁ</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
@@ -34,7 +34,7 @@
 
 <div class="map-title"><h1>SISTEMA POSTAL DE PANAMÁ</h1></div>
 <div class="search-container">
-    <input type="text" id="search-input" placeholder="Ej: J4199 o A6299-GT674">
+    <input type="text" id="search-input" placeholder="Ej: J4199 o A6299-GT674-A5C">
     <button id="search-btn">IR</button>
 </div>
 <div id="toggle-wm" class="toggle-watermark">TEXTO: ON</div>
@@ -62,10 +62,56 @@ let rawCuadricula = null, rawZonas = null;
 let labelsEnabled = true;
 const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const NANO_RES = 25; 
+const NUMEROS = "0123456789";
 
 // CACHE para watermarks micro y nano
 const microWatermarkCache = new Map();
 const nanoWatermarkCache = new Map();
+
+// Función hash simple pero determinista para generar códigos desordenados
+function hashPosition(ix, iy, salt = 0) {
+    // Hash simple pero efectivo para crear mapeo no secuencial
+    let hash = (ix * 15485863) ^ (iy * 2860486313) ^ (salt * 5915587277);
+    hash = hash >>> 0; // Convertir a unsigned
+    
+    // Asegurar que sea positivo y dentro de rango
+    return Math.abs(hash);
+}
+
+// Función para generar código nano LNN desordenado pero determinista
+function generateNanoCode(nix, niy, microIx, microIy) {
+    // Usar hash con sal diferente para cada micro celda
+    const salt = microIx * 24 + microIy;
+    const hash = hashPosition(nix, niy, salt);
+    
+    // LNN: Letra (24) + Número (10) + Número (10) = 2400 combinaciones
+    const letterIndex = hash % 24;
+    const num1 = Math.floor((hash / 24) % 10);
+    const num2 = Math.floor((hash / 240) % 10);
+    
+    return `${ALFABETO[letterIndex]}${num1}${num2}`;
+}
+
+// Función para verificar unicidad (para debugging)
+function verifyUniqueness() {
+    const codes = new Set();
+    for (let microIx = 0; microIx < 24; microIx++) {
+        for (let microIy = 0; microIy < 24; microIy++) {
+            for (let nix = 0; nix < NANO_RES; nix++) {
+                for (let niy = 0; niy < NANO_RES; niy++) {
+                    const code = generateNanoCode(nix, niy, microIx, microIy);
+                    if (codes.has(code)) {
+                        console.warn(`DUPLICADO: ${code} en micro ${microIx},${microIy} nano ${nix},${niy}`);
+                        return false;
+                    }
+                    codes.add(code);
+                }
+            }
+        }
+    }
+    console.log(`Total códigos únicos: ${codes.size} (necesarios: ${24*24*NANO_RES*NANO_RES})`);
+    return codes.size === 24*24*NANO_RES*NANO_RES;
+}
 
 function getPointInGrid(coords, col, row, totalCols, totalRows) {
     const p0 = coords[0], p1 = coords[1], p2 = coords[2], p3 = coords[3];
@@ -75,8 +121,19 @@ function getPointInGrid(coords, col, row, totalCols, totalRows) {
     return [lat, lng];
 }
 
-// Función simplificada para encontrar el watermark más cercano
-function findClosestWatermark(clickLatLng, watermarkCache) {
+function getMicroCodeFromIndices(ix, iy) {
+    return `${ALFABETO[ix]}${ALFABETO[iy]}${ix % 10}${iy % 10}${Math.floor((ix + iy) / 5)}`;
+}
+
+function getCacheKey(featureId, level, i, j, ni = null, nj = null) {
+    if (ni !== null && nj !== null) {
+        return `${featureId}-nano-${i}-${j}-${ni}-${nj}`;
+    }
+    return `${featureId}-micro-${i}-${j}`;
+}
+
+// Función para encontrar watermark más cercano
+function findClosestWatermark(clickLatLng, watermarkCache, maxDistance = 0.01) {
     let closestWatermark = null;
     let minDistance = Infinity;
     
@@ -85,28 +142,13 @@ function findClosestWatermark(clickLatLng, watermarkCache) {
             Math.pow(clickLatLng.lat - watermark.center[0], 2) +
             Math.pow(clickLatLng.lng - watermark.center[1], 2)
         );
-        if (distance < minDistance) {
+        if (distance < minDistance && distance < maxDistance) {
             minDistance = distance;
             closestWatermark = watermark;
         }
     });
     
     return closestWatermark;
-}
-
-function getMicroCodeFromIndices(ix, iy) {
-    return `${ALFABETO[ix]}${ALFABETO[iy]}${ix % 10}${iy % 10}${Math.floor((ix + iy) / 5)}`;
-}
-
-function getNanoCodeFromIndices(nix, niy) {
-    return `${ALFABETO[nix % 24]}${niy % 10}`;
-}
-
-function getCacheKey(featureId, level, i, j, ni = null, nj = null) {
-    if (ni !== null && nj !== null) {
-        return `${featureId}-nano-${i}-${j}-${ni}-${nj}`;
-    }
-    return `${featureId}-micro-${i}-${j}`;
 }
 
 function updateGridAndLabels() {
@@ -123,6 +165,8 @@ function updateGridAndLabels() {
         const fBounds = L.geoJSON(f).getBounds();
         if (!bounds.intersects(fBounds)) return;
         
+        const coords = f.geometry.coordinates[0];
+        
         // Labels para macro (zoom 10-14)
         if (z >= 10 && z < 14 && labelsEnabled) {
             L.marker(fBounds.getCenter(), {
@@ -133,8 +177,6 @@ function updateGridAndLabels() {
                 })
             }).addTo(labelLayer);
         }
-        
-        const coords = f.geometry.coordinates[0];
         
         // Labels para micro (zoom 14-17)
         if (z >= 14 && z < 17 && labelsEnabled) {
@@ -152,7 +194,8 @@ function updateGridAndLabels() {
                             getPointInGrid(coords, i+1, j, 24, 24),
                             getPointInGrid(coords, i+1, j+1, 24, 24),
                             getPointInGrid(coords, i, j+1, 24, 24)
-                        ]
+                        ],
+                        indices: { ix: i, iy: j }
                     });
                     
                     L.marker(center, {
@@ -166,14 +209,15 @@ function updateGridAndLabels() {
             }
         }
         
-        // Labels para nano (zoom >= 17) - cache para nano también
+        // Labels para nano (zoom >= 17) - solo algunos para no saturar
         if (z >= 17 && labelsEnabled) {
-            for (let i = 0; i < 24; i++) {
-                for (let j = 0; j < 24; j++) {
-                    for (let ni = 0; ni < NANO_RES; ni++) {
-                        for (let nj = 0; nj < NANO_RES; nj++) {
+            // Mostrar solo cada 3x3 nano celdas para evitar saturación
+            for (let i = 0; i < 24; i += 3) {
+                for (let j = 0; j < 24; j += 3) {
+                    for (let ni = 0; ni < NANO_RES; ni += 3) {
+                        for (let nj = 0; nj < NANO_RES; nj += 3) {
                             const nanoCenter = getPointInGrid(coords, i + (ni + 0.5)/NANO_RES, j + (nj + 0.5)/NANO_RES, 24, 24);
-                            const nanoCode = getNanoCodeFromIndices(ni, nj);
+                            const nanoCode = generateNanoCode(ni, nj, i, j);
                             
                             const cacheKey = getCacheKey(featureIndex, 'nano', i, j, ni, nj);
                             nanoWatermarkCache.set(cacheKey, {
@@ -184,8 +228,20 @@ function updateGridAndLabels() {
                                     getPointInGrid(coords, i + (ni+1)/NANO_RES, j + nj/NANO_RES, 24, 24),
                                     getPointInGrid(coords, i + (ni+1)/NANO_RES, j + (nj+1)/NANO_RES, 24, 24),
                                     getPointInGrid(coords, i + ni/NANO_RES, j + (nj+1)/NANO_RES, 24, 24)
-                                ]
+                                ],
+                                indices: { microIx: i, microIy: j, nix: ni, niy: nj }
                             });
+                            
+                            // Solo mostrar algunos labels nano para no saturar
+                            if (ni % 6 === 0 && nj % 6 === 0) {
+                                L.marker(nanoCenter, {
+                                    icon: L.divIcon({ 
+                                        className: 'nano-label-fixed', 
+                                        html: nanoCode, 
+                                        iconSize: [40, 12] 
+                                    })
+                                }).addTo(labelLayer);
+                            }
                         }
                     }
                 }
@@ -194,7 +250,7 @@ function updateGridAndLabels() {
 
         // REJILLA DINÁMICA - CON MÁS COLOR Y VISIBILIDAD
         if (z >= 14 && mymap.hasLayer(gridLayer)) {
-            // Líneas principales MICRO - MÁS VISIBLES
+            // Líneas principales MICRO
             for (let i = 0; i <= 24; i++) {
                 let v = [], h = [];
                 for(let j=0; j<=24; j++) {
@@ -204,12 +260,10 @@ function updateGridAndLabels() {
                 
                 let weight, opacity, color;
                 if (z >= 14 && z < 17) {
-                    // ÁREA POSTAL - AZUL MÁS FUERTE
                     weight = 1.8;
                     opacity = 0.7;
                     color = '#2980b9';
                 } else {
-                    // CÓDIGO POSTAL - MÁS VISIBLE
                     weight = 1.0;
                     opacity = 0.6;
                     color = '#3498db';
@@ -228,7 +282,7 @@ function updateGridAndLabels() {
                         const bottomRight = getPointInGrid(coords, i+1, j+1, 24, 24);
                         const bottomLeft = getPointInGrid(coords, i, j+1, 24, 24);
                         
-                        // Líneas verticales NANO - MÁS VISIBLES
+                        // Líneas verticales NANO
                         for (let ni = 1; ni < NANO_RES; ni++) {
                             const t = ni / NANO_RES;
                             const p1 = [
@@ -240,14 +294,14 @@ function updateGridAndLabels() {
                                 (1-t) * bottomLeft[1] + t * bottomRight[1]
                             ];
                             L.polyline([p1, p2], {
-                                color: '#e74c3c',  // ROJO/NARANJA MÁS VIVO
-                                weight: 0.6,       // MÁS GRUESO
-                                opacity: 0.4,      // MÁS VISIBLE
-                                dashArray: '3,2'   // PUNTEO MÁS DEFINIDO
+                                color: '#e74c3c',
+                                weight: 0.6,
+                                opacity: 0.4,
+                                dashArray: '3,2'
                             }).addTo(gridLayer);
                         }
                         
-                        // Líneas horizontales NANO - MÁS VISIBLES
+                        // Líneas horizontales NANO
                         for (let nj = 1; nj < NANO_RES; nj++) {
                             const t = nj / NANO_RES;
                             const p1 = [
@@ -259,10 +313,10 @@ function updateGridAndLabels() {
                                 (1-t) * topRight[1] + t * bottomRight[1]
                             ];
                             L.polyline([p1, p2], {
-                                color: '#e74c3c',  // ROJO/NARANJA MÁS VIVO
-                                weight: 0.6,       // MÁS GRUESO
-                                opacity: 0.4,      // MÁS VISIBLE
-                                dashArray: '3,2'   // PUNTEO MÁS DEFINIDO
+                                color: '#e74c3c',
+                                weight: 0.6,
+                                opacity: 0.4,
+                                dashArray: '3,2'
                             }).addTo(gridLayer);
                         }
                     }
@@ -276,6 +330,8 @@ function updateGridAndLabels() {
 $.getJSON("cuadricula.geojson", d => { 
     rawCuadricula = d; 
     L.geoJSON(d, {style: {color: "#3498db", weight: 1, fillOpacity: 0.05}}).addTo(cuadriculaFisicaLayer);
+    console.log("Verificando unicidad de códigos nano...");
+    console.log("Resultado:", verifyUniqueness() ? "OK - Sin duplicados" : "ERROR - Hay duplicados");
     updateGridAndLabels(); 
 });
 $.getJSON("estafetas.geojson", d => { 
@@ -285,7 +341,7 @@ $.getJSON("estafetas.geojson", d => {
 $.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style: {color: "#e74c3c", weight: 2}}).addTo(rutasLayer));
 $.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:5, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasPointsLayer));
 
-// EVENTO CLIC - USANDO CACHE PARA MICRO Y NANO
+// EVENTO CLIC - VERSIÓN MEJORADA
 mymap.on("click", function (e) {
     console.log("Clic en:", e.latlng.lat.toFixed(6), e.latlng.lng.toFixed(6));
     selectionLayer.clearLayers();
@@ -317,8 +373,8 @@ mymap.on("click", function (e) {
         }).addTo(selectionLayer);
         
     } else if (z >= 14 && z < 17) {
-        // NIVEL MICRO - usando cache
-        const closestWatermark = findClosestWatermark(e.latlng, microWatermarkCache);
+        // NIVEL MICRO
+        const closestWatermark = findClosestWatermark(e.latlng, microWatermarkCache, 0.005);
         
         if (closestWatermark) {
             titulo = "ÁREA POSTAL";
@@ -342,20 +398,22 @@ mymap.on("click", function (e) {
         }
         
     } else {
-        // NIVEL NANO - usando cache NANO
-        const closestWatermark = findClosestWatermark(e.latlng, nanoWatermarkCache);
+        // NIVEL NANO
+        const closestWatermark = findClosestWatermark(e.latlng, nanoWatermarkCache, 0.001);
         
         if (closestWatermark) {
             titulo = "CÓDIGO POSTAL";
             
-            // Encontrar el código micro correspondiente a esta celda nano
-            for (let [key, microWatermark] of microWatermarkCache) {
-                // Verificar si el punto nano está dentro del bounds micro
-                const microBounds = L.latLngBounds(microWatermark.bounds);
-                if (microBounds.contains(e.latlng)) {
-                    finalCode += `-${microWatermark.code}-${closestWatermark.code}`;
-                    break;
-                }
+            // Buscar el micro correspondiente a este nano
+            const microKey = getCacheKey(featureIndex, 'micro', 
+                closestWatermark.indices.microIx, 
+                closestWatermark.indices.microIy);
+            const microWatermark = microWatermarkCache.get(microKey);
+            
+            if (microWatermark) {
+                finalCode += `-${microWatermark.code}-${closestWatermark.code}`;
+            } else {
+                finalCode += `-??-${closestWatermark.code}`;
             }
             
             L.polygon(closestWatermark.bounds, {
@@ -379,11 +437,11 @@ mymap.on("click", function (e) {
     const ws = encodeURIComponent(`📍 Mi ubicación: ${finalCode}\nGPS: ${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`);
     
     // Calcular posición del popup para que no quede sobre el cuadro sombreado
-    const popupOffset = [0, -50]; // Más arriba
+    const popupOffset = [0, -60];
     
     // Calcular latitud más alta para el popup
     const popupLatLng = L.latLng(
-        e.latlng.lat + 0.0003, // Subir aún más la latitud
+        e.latlng.lat + 0.0004,
         e.latlng.lng
     );
     
@@ -400,7 +458,7 @@ mymap.on("click", function (e) {
         .openOn(mymap);
 });
 
-// BUSCADOR
+// BUSCADOR MEJORADO
 document.getElementById('search-btn').addEventListener('click', () => {
     const code = document.getElementById('search-input').value.trim().toUpperCase();
     if (!code || !rawCuadricula) return;
