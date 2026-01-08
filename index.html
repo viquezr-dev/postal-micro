@@ -14,8 +14,9 @@
         button#search-btn { background: #2c3e50; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; }
         .leaflet-top.leaflet-right { top: 80px !important; }
         .toggle-watermark { position: absolute; bottom: 30px; left: 10px; z-index: 5000; background: white; padding: 10px; border-radius: 5px; cursor: pointer; font-size: 11px; border: 1px solid #1a73e8; font-weight: bold; }
-        .watermark-label-fixed { background: none!important; border:none!important; color: #1a73e8!important; text-align: center; pointer-events: none!important; text-shadow: 1px 1px 1px white; font-weight: bold;}
-        .micro-label-fixed { background: none!important; border:none!important; color: #e67e22!important; text-align: center; pointer-events: none!important; text-shadow: 1px 1px 1px white; font-weight: bold; font-size: 10px;}
+        .watermark-label-fixed { background: none!important; border:none!important; color: #1a73e8!important; text-align: center; pointer-events: none!important; text-shadow: 1px 1px 1px white; }
+        .micro-label-fixed { background: none!important; border:none!important; color: #e67e22!important; text-align: center; pointer-events: none!important; text-shadow: 1px 1px 1px white; font-size: 9px; }
+        .nano-label-fixed { background: none!important; border:none!important; color: #d35400!important; text-align: center; pointer-events: none!important; text-shadow: 1px 1px 1px white; font-size: 8px; }
         .btn-nav, .btn-ws { display: inline-block; padding: 8px 12px; color: white!important; text-decoration: none!important; border-radius: 5px; font-weight: bold; font-size: 11px; margin: 2px; border:none; cursor: pointer; }
         .btn-nav { background-color: #3498db; }
         .btn-ws { background-color: #25D366; }
@@ -24,7 +25,7 @@
         .highlighted-polygon { animation: pulse 2s infinite; }
         @keyframes pulse {
             0% { fill-opacity: 0.3; }
-            50% { fill-opacity: 0.6; }
+            50% { fill-opacity: 0.7; }
             100% { fill-opacity: 0.3; }
         }
     </style>
@@ -144,35 +145,71 @@ function updateGridAndLabels() {
             }).addTo(labelLayer);
         }
         
-        // Labels para micro (zoom 14-17)
+        // Labels para micro (zoom 14-17) - REDUCIDOS para mejor legibilidad
         if (z >= 14 && z < 17 && labelsEnabled) {
             const coords = f.geometry.coordinates[0];
-            for (let i = 0; i < 24; i++) {
-                for (let j = 0; j < 24; j++) {
-                    const center = getPointInGrid(coords, i + 0.5, j + 0.5, 24, 24);
-                    const microCode = `${ALFABETO[i]}${ALFABETO[j]}${i % 10}${j % 10}${Math.floor((i + j) / 5)}`;
+            // Mostrar solo cada 3x3 para evitar sobrecarga
+            for (let i = 0; i < 24; i += 3) {
+                for (let j = 0; j < 24; j += 3) {
+                    const center = getPointInGrid(coords, i + 1.5, j + 1.5, 24, 24);
+                    const microCode = `${ALFABETO[i]}${ALFABETO[j]}`;
                     L.marker(center, {
                         icon: L.divIcon({ 
                             className: 'micro-label-fixed', 
                             html: microCode, 
-                            iconSize: [50, 15] 
+                            iconSize: [30, 12] 
                         })
                     }).addTo(labelLayer);
                 }
             }
         }
 
-        // Rejilla dinámica
+        // Rejilla dinámica - MÁS GRUESA para áreas postales
         if (z >= 14 && mymap.hasLayer(gridLayer)) {
             const coords = f.geometry.coordinates[0];
+            
+            // Líneas principales de la rejilla (cada cuadro micro) - MÁS GRUESAS
             for (let i = 0; i <= 24; i++) {
                 let v = [], h = [];
                 for(let j=0; j<=24; j++) {
                     v.push(getPointInGrid(coords, i, j, 24, 24));
                     h.push(getPointInGrid(coords, j, i, 24, 24));
                 }
-                L.polyline(v, {color: '#3498db', weight: 0.5, opacity: 0.3}).addTo(gridLayer);
-                L.polyline(h, {color: '#3498db', weight: 0.5, opacity: 0.3}).addTo(gridLayer);
+                // Aumentar grosor para zoom 14-17 (áreas postales)
+                const weight = z >= 14 && z < 17 ? 1.2 : 0.5;
+                L.polyline(v, {color: '#3498db', weight: weight, opacity: 0.4}).addTo(gridLayer);
+                L.polyline(h, {color: '#3498db', weight: weight, opacity: 0.4}).addTo(gridLayer);
+            }
+            
+            // Líneas internas para nano (solo en zoom alto)
+            if (z >= 17) {
+                for (let i = 0; i <= 24; i++) {
+                    for (let j = 0; j <= 24; j++) {
+                        // Dibujar nano-grid dentro de cada celda micro
+                        const cellCoords = [
+                            getPointInGrid(coords, i, j, 24, 24),
+                            getPointInGrid(coords, i+1, j, 24, 24),
+                            getPointInGrid(coords, i+1, j+1, 24, 24),
+                            getPointInGrid(coords, i, j+1, 24, 24)
+                        ];
+                        
+                        // Dibujar líneas verticales nano
+                        for (let ni = 1; ni < NANO_RES; ni++) {
+                            const t = ni / NANO_RES;
+                            const p1 = getPointInGrid(cellCoords, t, 0, 1, 1);
+                            const p2 = getPointInGrid(cellCoords, t, 1, 1, 1);
+                            L.polyline([p1, p2], {color: '#2980b9', weight: 0.3, opacity: 0.2, dashArray: '2,4'}).addTo(gridLayer);
+                        }
+                        
+                        // Dibujar líneas horizontales nano
+                        for (let nj = 1; nj < NANO_RES; nj++) {
+                            const t = nj / NANO_RES;
+                            const p1 = getPointInGrid(cellCoords, 0, t, 1, 1);
+                            const p2 = getPointInGrid(cellCoords, 1, t, 1, 1);
+                            L.polyline([p1, p2], {color: '#2980b9', weight: 0.3, opacity: 0.2, dashArray: '2,4'}).addTo(gridLayer);
+                        }
+                    }
+                }
             }
         }
     });
@@ -191,7 +228,7 @@ $.getJSON("estafetas.geojson", d => {
 $.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style: {color: "#e74c3c", weight: 2}}).addTo(rutasLayer));
 $.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:5, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasPointsLayer));
 
-// EVENTO CLIC CORREGIDO
+// EVENTO CLIC CORREGIDO - AHORA SÍ SOMBREA
 mymap.on("click", function (e) {
     selectionLayer.clearLayers();
     if (!rawCuadricula || !rawZonas) return;
@@ -208,14 +245,32 @@ mymap.on("click", function (e) {
     const z = mymap.getZoom();
 
     if (z < 14) {
-        L.geoJSON(useZonas ? hZ[0].feature : hC[0].feature, {
-            style:{color:"#1a73e8", weight:4, fillOpacity:0.3, className: 'highlighted-polygon'}
+        // Sombrear macro área
+        const selectedFeature = useZonas ? hZ[0].feature : hC[0].feature;
+        const polygon = L.geoJSON(selectedFeature, {
+            style: {
+                color: "#1a73e8", 
+                weight: 4, 
+                fillColor: "#1a73e8",
+                fillOpacity: 0.3,
+                className: 'highlighted-polygon'
+            }
         }).addTo(selectionLayer);
+        
     } else if (z >= 14 && z < 17) {
         try {
             const data = getHierarchicalData(e.latlng.lat, e.latlng.lng, hC[0].feature);
             titulo = "ÁREA POSTAL";
             finalCode += `-${data.micro}`;
+            
+            // Sombrear área postal (micro) - CON FILL COLOR EXPLÍCITO
+            const polygon = L.polygon(data.mRect, {
+                color: "#1a73e8", 
+                weight: 3, 
+                fillColor: "#1a73e8", // COLOR DE RELLENO EXPLÍCITO
+                fillOpacity: 0.4,
+                className: 'highlighted-polygon'
+            }).addTo(selectionLayer);
             
             // Añadir label para el área seleccionada
             L.marker(data.center, {
@@ -226,19 +281,17 @@ mymap.on("click", function (e) {
                 })
             }).addTo(selectionLayer);
             
-            // Polígono de selección
-            L.polygon(data.mRect, {
-                color:"#1a73e8", 
-                weight:3, 
-                fillOpacity:0.4,
-                className: 'highlighted-polygon'
-            }).addTo(selectionLayer);
-            
         } catch (err) {
             console.log("Error en micro:", err);
             // Fallback: mostrar solo el macro
-            L.geoJSON(hC[0].feature, {
-                style:{color:"#1a73e8", weight:4, fillOpacity:0.3}
+            const selectedFeature = hC[0].feature;
+            L.geoJSON(selectedFeature, {
+                style: {
+                    color: "#1a73e8", 
+                    weight: 4, 
+                    fillColor: "#1a73e8",
+                    fillOpacity: 0.3
+                }
             }).addTo(selectionLayer);
         }
     } else {
@@ -247,21 +300,22 @@ mymap.on("click", function (e) {
             titulo = "CÓDIGO POSTAL";
             finalCode += `-${data.micro}-${data.nano}`;
             
+            // Sombrear código postal (nano) - CON FILL COLOR EXPLÍCITO
+            const polygon = L.polygon(data.nRect, {
+                color: "#e67e22", 
+                weight: 4, 
+                fillColor: "#e67e22", // COLOR DE RELLENO EXPLÍCITO
+                fillOpacity: 0.5,
+                className: 'highlighted-polygon'
+            }).addTo(selectionLayer);
+            
             // Añadir label para el código postal seleccionado
             L.marker(data.center, {
                 icon: L.divIcon({ 
-                    className: 'micro-label-fixed', 
-                    html: `${data.micro}-${data.nano}`, 
-                    iconSize: [60, 15] 
+                    className: 'nano-label-fixed', 
+                    html: `${data.nano}`, 
+                    iconSize: [40, 12] 
                 })
-            }).addTo(selectionLayer);
-            
-            // Polígono de selección
-            L.polygon(data.nRect, {
-                color:"#e67e22", 
-                weight:4, 
-                fillOpacity:0.5,
-                className: 'highlighted-polygon'
             }).addTo(selectionLayer);
             
         } catch (err) {
@@ -272,6 +326,14 @@ mymap.on("click", function (e) {
                 titulo = "ÁREA POSTAL";
                 finalCode += `-${data.micro}`;
                 
+                // Sombrear área postal como fallback
+                const polygon = L.polygon(data.mRect, {
+                    color: "#1a73e8", 
+                    weight: 3, 
+                    fillColor: "#1a73e8",
+                    fillOpacity: 0.4
+                }).addTo(selectionLayer);
+                
                 L.marker(data.center, {
                     icon: L.divIcon({ 
                         className: 'micro-label-fixed', 
@@ -279,16 +341,16 @@ mymap.on("click", function (e) {
                         iconSize: [50, 15] 
                     })
                 }).addTo(selectionLayer);
-                
-                L.polygon(data.mRect, {
-                    color:"#1a73e8", 
-                    weight:3, 
-                    fillOpacity:0.4
-                }).addTo(selectionLayer);
             } catch (err2) {
                 // Fallback final: mostrar solo el macro
-                L.geoJSON(hC[0].feature, {
-                    style:{color:"#1a73e8", weight:4, fillOpacity:0.3}
+                const selectedFeature = hC[0].feature;
+                L.geoJSON(selectedFeature, {
+                    style: {
+                        color: "#1a73e8", 
+                        weight: 4, 
+                        fillColor: "#1a73e8",
+                        fillOpacity: 0.3
+                    }
                 }).addTo(selectionLayer);
             }
         }
@@ -342,10 +404,11 @@ document.getElementById('search-btn').addEventListener('click', () => {
                         getPointInGrid(coords, ix, iy+1, 24, 24)
                     ];
                     
-                    L.polygon(mRect, {
-                        color:"#1a73e8", 
-                        weight:3, 
-                        fillOpacity:0.4,
+                    const polygon = L.polygon(mRect, {
+                        color: "#1a73e8", 
+                        weight: 3, 
+                        fillColor: "#1a73e8",
+                        fillOpacity: 0.4,
                         className: 'highlighted-polygon'
                     }).addTo(selectionLayer);
                     
