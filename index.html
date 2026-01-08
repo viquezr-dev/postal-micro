@@ -14,19 +14,19 @@
         button#search-btn { background: #2c3e50; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; }
         .leaflet-top.leaflet-right { top: 80px !important; }
         .toggle-watermark { position: absolute; bottom: 30px; left: 10px; z-index: 5000; background: white; padding: 10px; border-radius: 5px; cursor: pointer; font-size: 11px; border: 1px solid #1a73e8; font-weight: bold; }
-        .watermark-label-fixed { background: none!important; border:none!important; color: #1a73e8!important; text-align: center; pointer-events: none!important; text-shadow: 1px 1px 1px white; font-weight: bold; }
-        .micro-label-fixed { background: none!important; border:none!important; color: #e67e22!important; text-align: center; pointer-events: none!important; text-shadow: 1px 1px 1px white; font-size: 10px; font-weight: bold; }
+        .watermark-label-fixed { background: none!important; border:none!important; color: #1a73e8!important; text-align: center; pointer-events: none!important; text-shadow: 1px 1px 1px white; }
+        .micro-label-fixed { background: none!important; border:none!important; color: #e67e22!important; text-align: center; pointer-events: none!important; text-shadow: 1px 1px 1px white; font-size: 9px; }
         .nano-label-fixed { background: none!important; border:none!important; color: #d35400!important; text-align: center; pointer-events: none!important; text-shadow: 1px 1px 1px white; font-size: 8px; }
         .btn-nav, .btn-ws { display: inline-block; padding: 8px 12px; color: white!important; text-decoration: none!important; border-radius: 5px; font-weight: bold; font-size: 11px; margin: 2px; border:none; cursor: pointer; }
         .btn-nav { background-color: #3498db; }
         .btn-ws { background-color: #25D366; }
         .locate-button { width: 30px; height: 30px; line-height: 30px; text-align: center; display: block; text-decoration: none; color: black; background: white; font-size: 18px; cursor: pointer; }
         .user-location-icon { text-align: center; font-size: 20px; }
-        .highlighted-polygon { animation: pulse 2s infinite; stroke-width: 3; }
+        .highlighted-polygon { animation: pulse 2s infinite; }
         @keyframes pulse {
-            0% { fill-opacity: 0.3; stroke-opacity: 0.8; }
-            50% { fill-opacity: 0.6; stroke-opacity: 1; }
-            100% { fill-opacity: 0.3; stroke-opacity: 0.8; }
+            0% { fill-opacity: 0.3; }
+            50% { fill-opacity: 0.7; }
+            100% { fill-opacity: 0.3; }
         }
     </style>
 </head>
@@ -48,6 +48,7 @@
 const mymap = L.map('mapid').setView([8.50, -80.0], 8);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mymap);
 
+// Capas
 const zonasGeoLayer = L.layerGroup().addTo(mymap);
 const cuadriculaFisicaLayer = L.layerGroup().addTo(mymap);
 const gridLayer = L.layerGroup().addTo(mymap);
@@ -62,11 +63,6 @@ let labelsEnabled = true;
 const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const NANO_RES = 25; 
 
-// Función auxiliar para obtener el código micro exacto según la posición i, j
-function generateMicroCode(i, j) {
-    return `${ALFABETO[i]}${ALFABETO[j]}${i % 10}${j % 10}${Math.floor((i + j) / 5)}`;
-}
-
 function getPointInGrid(coords, col, row, totalCols, totalRows) {
     const p0 = coords[0], p1 = coords[1], p2 = coords[2], p3 = coords[3];
     const tX = col / totalCols, tY = row / totalRows;
@@ -79,21 +75,26 @@ function getHierarchicalData(lat, lng, feature) {
     const b = L.geoJSON(feature).getBounds();
     const coords = feature.geometry.coordinates[0];
     
+    // Cálculo PRECISO - sin redondeos preventivos
     const pctX = (lng - b.getWest()) / (b.getEast() - b.getWest());
     const pctY = (lat - b.getSouth()) / (b.getNorth() - b.getSouth());
     
-    const safePctX = Math.min(0.999999, Math.max(0.000001, pctX));
-    const safePctY = Math.min(0.999999, Math.max(0.000001, pctY));
+    // Asegurar que esté dentro de los límites exactos
+    const safePctX = Math.min(0.99999999, Math.max(0.00000001, pctX));
+    const safePctY = Math.min(0.99999999, Math.max(0.00000001, pctY));
     
+    // Cálculo de índices MICRO (0-23)
     const ix = Math.floor(safePctX * 24);
     const iy = Math.floor(safePctY * 24);
     
+    // Asegurar índices válidos
     const safeIx = Math.min(23, Math.max(0, ix));
     const safeIy = Math.min(23, Math.max(0, iy));
     
-    // CORRECCIÓN: Código micro completo de 5 caracteres
-    const micro = generateMicroCode(safeIx, safeIy);
+    // Formato micro: "GT674" - Mismo formato que en updateGridAndLabels
+    const micro = `${ALFABETO[safeIx]}${ALFABETO[safeIy]}${safeIx % 10}${safeIy % 10}${Math.floor((safeIx + safeIy) / 5)}`;
     
+    // Rectángulo micro - exactamente igual que en los labels
     const mRect = [
         getPointInGrid(coords, safeIx, safeIy, 24, 24),
         getPointInGrid(coords, safeIx+1, safeIy, 24, 24),
@@ -101,16 +102,20 @@ function getHierarchicalData(lat, lng, feature) {
         getPointInGrid(coords, safeIx, safeIy+1, 24, 24)
     ];
 
-    const remX = (safePctX * 24) - safeIx;
-    const remY = (safePctY * 24) - safeIy;
+    // Cálculo de índices NANO dentro de la celda micro
+    const remX = (safePctX * 24) - safeIx;  // 0 a <1
+    const remY = (safePctY * 24) - safeIy;  // 0 a <1
     
     const nix = Math.floor(remX * NANO_RES);
     const niy = Math.floor(remY * NANO_RES);
+    
+    // Asegurar índices nano válidos
     const safeNix = Math.min(NANO_RES-1, Math.max(0, nix));
     const safeNiy = Math.min(NANO_RES-1, Math.max(0, niy));
     
     const nano = `${ALFABETO[safeNix % 24]}${safeNiy % 10}`;
 
+    // Rectángulo nano - más pequeño dentro de la celda micro
     const nRect = [
         getPointInGrid(coords, safeIx + safeNix/NANO_RES, safeIy + safeNiy/NANO_RES, 24, 24),
         getPointInGrid(coords, safeIx + (safeNix+1)/NANO_RES, safeIy + safeNiy/NANO_RES, 24, 24),
@@ -118,7 +123,20 @@ function getHierarchicalData(lat, lng, feature) {
         getPointInGrid(coords, safeIx + safeNix/NANO_RES, safeIy + (safeNiy+1)/NANO_RES, 24, 24)
     ];
 
-    return { micro, nano, mRect, nRect, center: getPointInGrid(coords, safeIx + 0.5, safeIy + 0.5, 24, 24) };
+    return { 
+        micro, 
+        nano, 
+        mRect, 
+        nRect, 
+        microCenter: getPointInGrid(coords, safeIx + 0.5, safeIy + 0.5, 24, 24),
+        nanoCenter: getPointInGrid(coords, safeIx + (safeNix + 0.5)/NANO_RES, safeIy + (safeNiy + 0.5)/NANO_RES, 24, 24),
+        indices: { ix: safeIx, iy: safeIy, nix: safeNix, niy: safeNiy }
+    };
+}
+
+// Función para calcular código micro a partir de índices (USADA EN AMBOS LUGARES)
+function getMicroCodeFromIndices(ix, iy) {
+    return `${ALFABETO[ix]}${ALFABETO[iy]}${ix % 10}${iy % 10}${Math.floor((ix + iy) / 5)}`;
 }
 
 function updateGridAndLabels() {
@@ -129,10 +147,10 @@ function updateGridAndLabels() {
     const bounds = mymap.getBounds();
 
     rawCuadricula.features.forEach(f => {
-        const fLayer = L.geoJSON(f);
-        const fBounds = fLayer.getBounds();
+        const fBounds = L.geoJSON(f).getBounds();
         if (!bounds.intersects(fBounds)) return;
         
+        // Labels para macro (zoom 10-14)
         if (z >= 10 && z < 14 && labelsEnabled) {
             L.marker(fBounds.getCenter(), {
                 icon: L.divIcon({ 
@@ -143,61 +161,47 @@ function updateGridAndLabels() {
             }).addTo(labelLayer);
         }
         
-        // CORRECCIÓN: Labels de área postal completos y visibles
+        // Labels para micro (zoom 14-17) - USANDO LA MISMA FUNCIÓN
         if (z >= 14 && z < 17 && labelsEnabled) {
             const coords = f.geometry.coordinates[0];
-            for (let i = 0; i < 24; i += 3) {
-                for (let j = 0; j < 24; j += 3) {
-                    const center = getPointInGrid(coords, i + 1.5, j + 1.5, 24, 24);
-                    const microCode = generateMicroCode(i, j); // Código completo
+            // Mostrar labels en todas las celdas micro
+            for (let i = 0; i < 24; i++) {
+                for (let j = 0; j < 24; j++) {
+                    const center = getPointInGrid(coords, i + 0.5, j + 0.5, 24, 24);
+                    // MISMA FUNCIÓN que en getHierarchicalData
+                    const microCode = getMicroCodeFromIndices(i, j);
                     L.marker(center, {
                         icon: L.divIcon({ 
                             className: 'micro-label-fixed', 
                             html: microCode, 
-                            iconSize: [50, 15] 
+                            iconSize: [45, 15] 
                         })
                     }).addTo(labelLayer);
                 }
             }
         }
 
+        // Rejilla dinámica - MÁS GRUESA para áreas postales
         if (z >= 14 && mymap.hasLayer(gridLayer)) {
             const coords = f.geometry.coordinates[0];
+            
+            // Líneas principales de la rejilla (cada cuadro micro) - MÁS GRUESAS
             for (let i = 0; i <= 24; i++) {
                 let v = [], h = [];
                 for(let j=0; j<=24; j++) {
                     v.push(getPointInGrid(coords, i, j, 24, 24));
                     h.push(getPointInGrid(coords, j, i, 24, 24));
                 }
-                const weight = z >= 14 && z < 17 ? 1.5 : 0.8;
-                L.polyline(v, {color: '#3498db', weight: weight, opacity: 0.5}).addTo(gridLayer);
-                L.polyline(h, {color: '#3498db', weight: weight, opacity: 0.5}).addTo(gridLayer);
-            }
-            
-            if (z >= 17) {
-                for (let i = 0; i < 24; i++) {
-                    for (let j = 0; j < 24; j++) {
-                        const cellBounds = [
-                            getPointInGrid(coords, i, j, 24, 24),
-                            getPointInGrid(coords, i+1, j, 24, 24),
-                            getPointInGrid(coords, i+1, j+1, 24, 24),
-                            getPointInGrid(coords, i, j+1, 24, 24)
-                        ];
-                        // Solo dibujar nano-grid si está en vista para performance
-                        if (bounds.contains(cellBounds[0])) {
-                           for (let ni = 1; ni < NANO_RES; ni+=5) { 
-                               const t = ni / NANO_RES;
-                               L.polyline([getPointInGrid(cellBounds, t, 0, 1, 1), getPointInGrid(cellBounds, t, 1, 1, 1)], {color: '#2980b9', weight: 0.3, opacity: 0.3, dashArray: '2,4'}).addTo(gridLayer);
-                               L.polyline([getPointInGrid(cellBounds, 0, t, 1, 1), getPointInGrid(cellBounds, 1, t, 1, 1)], {color: '#2980b9', weight: 0.3, opacity: 0.3, dashArray: '2,4'}).addTo(gridLayer);
-                           }
-                        }
-                    }
-                }
+                // Aumentar grosor para zoom 14-17 (áreas postales)
+                const weight = z >= 14 && z < 17 ? 1.2 : 0.5;
+                L.polyline(v, {color: '#3498db', weight: weight, opacity: 0.4}).addTo(gridLayer);
+                L.polyline(h, {color: '#3498db', weight: weight, opacity: 0.4}).addTo(gridLayer);
             }
         }
     });
 }
 
+// Carga de Datos
 $.getJSON("cuadricula.geojson", d => { 
     rawCuadricula = d; 
     L.geoJSON(d, {style: {color: "#3498db", weight: 1, fillOpacity: 0.05}}).addTo(cuadriculaFisicaLayer);
@@ -210,12 +214,12 @@ $.getJSON("estafetas.geojson", d => {
 $.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style: {color: "#e74c3c", weight: 2}}).addTo(rutasLayer));
 $.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:5, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasPointsLayer));
 
-// EVENTO CLIC CORREGIDO
+// EVENTO CLIC CORREGIDO - CON SINCRO
 mymap.on("click", function (e) {
     selectionLayer.clearLayers();
-    if (!rawCuadricula) return;
+    if (!rawCuadricula || !rawZonas) return;
     
-    const hZ = rawZonas ? leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawZonas)) : [];
+    const hZ = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawZonas));
     const hC = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawCuadricula));
 
     if (hC.length === 0) return;
@@ -227,103 +231,276 @@ mymap.on("click", function (e) {
     const z = mymap.getZoom();
 
     if (z < 14) {
+        // Sombrear macro área
         const selectedFeature = useZonas ? hZ[0].feature : hC[0].feature;
         L.geoJSON(selectedFeature, {
-            style: { color: "#1a73e8", weight: 4, fillColor: "#1a73e8", fillOpacity: 0.4, className: 'highlighted-polygon' }
+            style: {
+                color: "#1a73e8", 
+                weight: 4, 
+                fillColor: "#1a73e8",
+                fillOpacity: 0.3,
+                className: 'highlighted-polygon'
+            }
         }).addTo(selectionLayer);
         
+    } else if (z >= 14 && z < 17) {
+        try {
+            const data = getHierarchicalData(e.latlng.lat, e.latlng.lng, hC[0].feature);
+            titulo = "ÁREA POSTAL";
+            finalCode += `-${data.micro}`;
+            
+            // Crear y añadir polígono para área postal (micro)
+            const polygon = L.polygon(data.mRect, {
+                color: "#1a73e8", 
+                weight: 3, 
+                fillColor: "#1a73e8",
+                fillOpacity: 0.4,
+                className: 'highlighted-polygon'
+            }).addTo(selectionLayer);
+            
+            // Añadir label para el área seleccionada
+            L.marker(data.microCenter, {
+                icon: L.divIcon({ 
+                    className: 'micro-label-fixed', 
+                    html: data.micro, 
+                    iconSize: [50, 15] 
+                })
+            }).addTo(selectionLayer);
+            
+        } catch (err) {
+            console.error("Error en micro:", err);
+            // Fallback: mostrar solo el macro
+            L.geoJSON(hC[0].feature, {
+                style: {
+                    color: "#1a73e8", 
+                    weight: 4, 
+                    fillColor: "#1a73e8",
+                    fillOpacity: 0.3
+                }
+            }).addTo(selectionLayer);
+        }
     } else {
         try {
             const data = getHierarchicalData(e.latlng.lat, e.latlng.lng, hC[0].feature);
+            titulo = "CÓDIGO POSTAL";
+            finalCode += `-${data.micro}-${data.nano}`;
             
-            if (z >= 14 && z < 17) {
+            // Crear y añadir polígono para código postal (nano)
+            const polygon = L.polygon(data.nRect, {
+                color: "#e67e22", 
+                weight: 4, 
+                fillColor: "#e67e22",
+                fillOpacity: 0.5,
+                className: 'highlighted-polygon'
+            }).addTo(selectionLayer);
+            
+            // Añadir label para el código postal seleccionado
+            L.marker(data.nanoCenter, {
+                icon: L.divIcon({ 
+                    className: 'nano-label-fixed', 
+                    html: data.nano, 
+                    iconSize: [40, 12] 
+                })
+            }).addTo(selectionLayer);
+            
+        } catch (err) {
+            console.error("Error en nano:", err);
+            // Fallback: mostrar micro
+            try {
+                const data = getHierarchicalData(e.latlng.lat, e.latlng.lng, hC[0].feature);
                 titulo = "ÁREA POSTAL";
                 finalCode += `-${data.micro}`;
-                // CORRECCIÓN: Sombreado de área micro
+                
+                // Sombrear área postal como fallback
                 L.polygon(data.mRect, {
-                    color: "#1a73e8", weight: 3, fillColor: "#1a73e8", fillOpacity: 0.5, className: 'highlighted-polygon'
+                    color: "#1a73e8", 
+                    weight: 3, 
+                    fillColor: "#1a73e8",
+                    fillOpacity: 0.4
                 }).addTo(selectionLayer);
-            } else {
-                titulo = "CÓDIGO POSTAL";
-                finalCode += `-${data.micro}-${data.nano}`;
-                // CORRECCIÓN: Sombreado de área nano
-                L.polygon(data.nRect, {
-                    color: "#e67e22", weight: 4, fillColor: "#e67e22", fillOpacity: 0.6, className: 'highlighted-polygon'
+                
+                L.marker(data.microCenter, {
+                    icon: L.divIcon({ 
+                        className: 'micro-label-fixed', 
+                        html: data.micro, 
+                        iconSize: [50, 15] 
+                    })
+                }).addTo(selectionLayer);
+            } catch (err2) {
+                console.error("Error en fallback micro:", err2);
+                // Fallback final: mostrar solo el macro
+                L.geoJSON(hC[0].feature, {
+                    style: {
+                        color: "#1a73e8", 
+                        weight: 4, 
+                        fillColor: "#1a73e8",
+                        fillOpacity: 0.3
+                    }
                 }).addTo(selectionLayer);
             }
-        } catch (err) {
-            console.log("Error de selección:", err);
         }
     }
 
     const ws = encodeURIComponent(`📍 Mi ubicación: ${finalCode}\nGPS: ${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`);
     L.popup({offset:[0,-5]}).setLatLng(e.latlng).setContent(`
-        <div style="text-align:center; min-width: 120px;">
-            <small style="color: #666;">${titulo}</small><br>
-            <b style="font-size: 14px;">${finalCode}</b><br><br>
+        <div style="text-align:center;">
+            <small>${titulo}</small><br>
+            <b>${finalCode}</b><br>
             <button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${e.latlng.lat},${e.latlng.lng}')">📍 MAPS</button>
             <button class="btn-ws" onclick="window.open('https://wa.me/?text=${ws}')">💬 WS</button>
         </div>
     `).openOn(mymap);
 });
 
-// BUSCADOR
+// BUSCADOR MEJORADO
 document.getElementById('search-btn').addEventListener('click', () => {
     const code = document.getElementById('search-input').value.trim().toUpperCase();
     if (!code || !rawCuadricula) return;
+    
+    // Buscar macro código
     const macroPart = code.split('-')[0];
     let f = rawCuadricula.features.find(feat => feat.properties.codigo === macroPart);
+    
     if (f) {
         const bounds = L.geoJSON(f).getBounds();
+        
+        // Si hay micro código (ej: A6299-GT674)
         if (code.includes('-')) {
             const microPart = code.split('-')[1];
-            const ix = ALFABETO.indexOf(microPart.charAt(0));
-            const iy = ALFABETO.indexOf(microPart.charAt(1));
-            if (ix !== -1 && iy !== -1) {
-                const center = getPointInGrid(f.geometry.coordinates[0], ix + 0.5, iy + 0.5, 24, 24);
-                mymap.setView(center, 16);
-                return;
+            if (microPart && microPart.length >= 2) {
+                // Decodificar coordenadas micro
+                const firstChar = microPart.charAt(0);
+                const secondChar = microPart.charAt(1);
+                const ix = ALFABETO.indexOf(firstChar);
+                const iy = ALFABETO.indexOf(secondChar);
+                
+                if (ix !== -1 && iy !== -1) {
+                    // Calcular centro del área micro
+                    const coords = f.geometry.coordinates[0];
+                    const center = getPointInGrid(coords, ix + 0.5, iy + 0.5, 24, 24);
+                    mymap.setView(center, 16);
+                    
+                    // Mostrar selección
+                    selectionLayer.clearLayers();
+                    const mRect = [
+                        getPointInGrid(coords, ix, iy, 24, 24),
+                        getPointInGrid(coords, ix+1, iy, 24, 24),
+                        getPointInGrid(coords, ix+1, iy+1, 24, 24),
+                        getPointInGrid(coords, ix, iy+1, 24, 24)
+                    ];
+                    
+                    // Usar MISMA función para código micro
+                    const microCode = getMicroCodeFromIndices(ix, iy);
+                    
+                    L.polygon(mRect, {
+                        color: "#1a73e8", 
+                        weight: 3, 
+                        fillColor: "#1a73e8",
+                        fillOpacity: 0.4,
+                        className: 'highlighted-polygon'
+                    }).addTo(selectionLayer);
+                    
+                    // Añadir label con código completo
+                    L.marker(center, {
+                        icon: L.divIcon({ 
+                            className: 'micro-label-fixed', 
+                            html: microCode, 
+                            iconSize: [50, 15] 
+                        })
+                    }).addTo(selectionLayer);
+                    
+                    return;
+                }
             }
         }
-        mymap.fitBounds(bounds);
+        
+        // Solo macro código
+        mymap.fitBounds(bounds, {padding: [50, 50]});
     } else {
-        alert("Código no encontrado");
+        alert("Código postal no encontrado: " + code);
     }
 });
 
+// GPS - Control personalizado
 const LocateControl = L.Control.extend({
     options: { position: 'topleft' },
     onAdd: function() {
         const c = L.DomUtil.create('div', 'leaflet-bar');
         const b = L.DomUtil.create('a', 'locate-button', c);
         b.innerHTML = '🎯';
-        L.DomEvent.on(b, 'click', e => { L.DomEvent.stopPropagation(e); mymap.locate({setView:true, maxZoom:18}); });
+        b.title = "Ubicar mi posición";
+        L.DomEvent.on(b, 'click', e => { 
+            L.DomEvent.stopPropagation(e); 
+            mymap.locate({setView:true, maxZoom:18}); 
+        });
         return c;
     }
 });
 mymap.addControl(new LocateControl());
 
+// CONTROL DE CAPAS
 L.control.layers(null, {
     "Zonas": zonasGeoLayer,
     "Cuadrícula": cuadriculaFisicaLayer,
     "Rutas": rutasLayer,
     "Estafetas": estafetasPointsLayer,
-    "Código postal": gridLayer
-}, {collapsed: true}).addTo(mymap);
+    "Código postal": gridLayer,
+    "Selección": selectionLayer,
+    "Mi ubicación": userLocationLayer
+}, {collapsed: false}).addTo(mymap);
 
+// Toggle para etiquetas
 $('#toggle-wm').click(function() {
     labelsEnabled = !labelsEnabled;
     $(this).text(labelsEnabled ? "TEXTO: ON" : "TEXTO: OFF");
     updateGridAndLabels();
 });
 
+// Actualizar rejilla y etiquetas al mover/zoom
 mymap.on('moveend zoomend', updateGridAndLabels);
-mymap.on('locationfound', e => {
+
+// Manejo de ubicación GPS
+mymap.on('locationfound', function(e) {
     userLocationLayer.clearLayers();
-    L.circle(e.latlng, {radius: e.accuracy/2}).addTo(userLocationLayer);
-    L.marker(e.latlng).addTo(userLocationLayer).bindPopup("Estás aquí").openPopup();
+    
+    // Marcador de ubicación
+    L.marker(e.latlng, {
+        icon: L.divIcon({
+            className: 'user-location-icon',
+            html: '📍',
+            iconSize: [30, 30]
+        }),
+        zIndexOffset: 1000
+    }).addTo(userLocationLayer);
+    
+    // Círculo de precisión
+    L.circle(e.latlng, {
+        radius: e.accuracy / 2,
+        color: '#3498db',
+        fillColor: '#3498db',
+        fillOpacity: 0.1,
+        weight: 1
+    }).addTo(userLocationLayer);
+    
+    // Mostrar popup con información
+    L.popup()
+        .setLatLng(e.latlng)
+        .setContent(`
+            <div style="text-align:center;">
+                <b>Tu ubicación actual</b><br>
+                Lat: ${e.latlng.lat.toFixed(6)}<br>
+                Lng: ${e.latlng.lng.toFixed(6)}<br>
+                <small>Precisión: ${Math.round(e.accuracy)} metros</small>
+            </div>
+        `)
+        .openOn(mymap);
 });
 
+mymap.on('locationerror', function(e) {
+    alert("No se pudo obtener tu ubicación. Asegúrate de permitir el acceso a la ubicación en tu navegador.\n\nError: " + e.message);
+});
+
+// Inicializar etiquetas
 updateGridAndLabels();
 </script>
 </body>
