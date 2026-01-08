@@ -11,23 +11,19 @@
         .map-title { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 4000; text-align: center; pointer-events: none; width: 90%; }
         .map-title h1 { margin: 0; font-size: 18px; color: #2c3e50; font-weight: bold; text-shadow: 0 0 5px white; }
         
-        /* Buscador */
         .search-container { position: absolute; top: 15px; right: 10px; z-index: 5000; display: flex; background: white; padding: 5px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); width: 280px; }
         input#search-input { flex: 1; border: none; padding: 8px; font-size: 14px; outline: none; }
         button#search-btn { background: #2c3e50; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; }
 
-        /* Ajuste de posición del Control de Capas para que no choque con buscador */
         .leaflet-top.leaflet-right { top: 100px !important; }
 
-        /* BOTÓN ETIQUETAS */
         .toggle-watermark { position: absolute; bottom: 30px; left: 10px; z-index: 5000; background: white; padding: 10px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); cursor: pointer; font-weight: bold; font-size: 11px; border: 1px solid #1a73e8; color: #1a73e8; }
         .toggle-watermark.off { color: #666; border-color: #ccc; }
 
-        /* ESTILO MARCA DE AGUA (TEXTO EN COLUMNA Y LIGERO) */
         .watermark-label-fixed {
             background: none !important; border: none !important; box-shadow: none !important;
             color: #1a73e8 !important; 
-            font-weight: 400 !important; /* Menos bold */
+            font-weight: 400 !important;
             text-align: center; pointer-events: none !important; line-height: 1.1;
             text-shadow: 1px 1px 1px white;
         }
@@ -107,7 +103,6 @@ function updateGridAndLabels() {
 
         const macroCode = f.properties.codigo;
 
-        // NIVEL MACRO (10-13)
         if (z >= 10 && z < 14 && labelsEnabled) {
             L.marker(mB.getCenter(), {
                 pane: 'watermarkPane',
@@ -116,7 +111,6 @@ function updateGridAndLabels() {
             }).addTo(labelLayer);
         }
 
-        // NIVEL MICRO (14+)
         if (z >= 14) {
             const sX = (mB.getEast() - mB.getWest()) / 24, sY = (mB.getNorth() - mB.getSouth()) / 24;
             for (let i = 0; i < 24; i++) {
@@ -124,17 +118,19 @@ function updateGridAndLabels() {
                     let s = mB.getSouth() + (j * sY), w = mB.getWest() + (i * sX);
                     let rectB = L.latLngBounds([s, w], [s + sY, w + sX]);
                     if (bounds.intersects(rectB)) {
-                        // Rejilla Dinámica (Siempre se queda si el layer está activo)
-                        L.rectangle(rectB, { color: "#3498db", weight: 0.5, fillOpacity: 0.02, interactive: false }).addTo(gridLayer);
+                        // REJILLA MICRO: Más gruesa si estamos en zoom Nano para servir de guía
+                        let weight = (z >= 18) ? 1.5 : 0.5;
+                        let color = (z >= 18) ? "#1a73e8" : "#3498db";
+                        L.rectangle(rectB, { color: color, weight: weight, fillOpacity: 0.01, interactive: false }).addTo(gridLayer);
                         
-                        // TEXTO EN COLUMNA (Solo hasta zoom 17)
+                        // TEXTO: Sin guion en el watermark
                         if (labelsEnabled && z >= 14 && z < 18) {
                             const microC = `${ALFABETO[i]}${ALFABETO[j]}${i % 10}${j % 10}${Math.floor((i + j) / 5)}`;
                             L.marker(rectB.getCenter(), {
                                 pane: 'watermarkPane',
                                 icon: L.divIcon({ 
                                     className: 'watermark-label-fixed label-micro', 
-                                    html: `<div>${macroCode}</div><div>-${microC}</div>`, // Texto en columna
+                                    html: `<div>${macroCode}</div><div>${microC}</div>`, 
                                     iconSize: [60, 30] 
                                 }),
                                 interactive: false
@@ -145,7 +141,6 @@ function updateGridAndLabels() {
             }
         }
 
-        // NIVEL NANO (Solo Cuadrícula, sin texto)
         if (z >= 18) {
             const sX = (mB.getEast() - mB.getWest()) / 24, sY = (mB.getNorth() - mB.getSouth()) / 24;
             const nsX = sX / 10, nsY = sY / 10;
@@ -179,7 +174,6 @@ $('#toggle-wm').click(function() {
 
 mymap.on('moveend zoomend', updateGridAndLabels);
 
-// Cargas JSON
 $.getJSON("estafetas.geojson", d => { rawZonas = d; L.geoJSON(d, {style:{color:"#000", weight:1.5, fillOpacity:0.1, fillColor:"#888"}}).addTo(zonasGeoLayer); });
 $.getJSON("cuadricula.geojson", d => { rawCuadricula = d; L.geoJSON(d, {style:{color:"#2c3e50", weight:1, fillOpacity:0.05}}).addTo(cuadriculaLayer); updateGridAndLabels(); });
 $.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style:{color:"#e74c3c", weight:2}}).addTo(rutasLayer));
@@ -219,7 +213,6 @@ mymap.on("click", function (e) {
     L.popup({offset:[0,-55]}).setLatLng(e.latlng).setContent(`<div style="text-align:center;"><small>${titulo}</small><br><b>${finalCode}</b><br><button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${e.latlng.lat},${e.latlng.lng}')">📍 MAPS</button><button class="btn-ws" onclick="window.open('https://wa.me/?text=${ws}')">💬 WS</button></div>`).openOn(mymap);
 });
 
-// Buscador
 document.getElementById('search-btn').addEventListener('click', () => {
     const code = document.getElementById('search-input').value.trim().toUpperCase();
     if (!code || !rawCuadricula) return;
