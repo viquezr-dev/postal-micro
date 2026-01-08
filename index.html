@@ -4,42 +4,56 @@
     <title>SISTEMA POSTAL DE PANAMÁ</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+
     <style>
-        body, html, #mapid { width: 100%; height: 100%; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
-        .leaflet-popup { margin-bottom: 70px !important; }
-        .map-title { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 4000; text-align: center; pointer-events: none; width: 90%; }
-        .map-title h1 { margin: 0; font-size: 18px; color: #2c3e50; font-weight: bold; text-shadow: 0 0 5px white; }
-        
-        .search-container { position: absolute; top: 15px; right: 10px; z-index: 5000; display: flex; background: white; padding: 5px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); width: 280px; }
-        input#search-input { flex: 1; border: none; padding: 8px; font-size: 14px; outline: none; }
-        button#search-btn { background: #2c3e50; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        html, body, #mapid { width:100%; height:100%; margin:0; padding:0; }
+        .map-title { position:absolute; top:10px; left:50%; transform:translateX(-50%); z-index:4000; }
+        .map-title h1 { font-size:18px; margin:0; text-shadow:0 0 5px white; }
 
-        .leaflet-top.leaflet-right { top: 100px !important; }
-
-        .toggle-watermark { position: absolute; bottom: 30px; left: 10px; z-index: 5000; background: white; padding: 10px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); cursor: pointer; font-weight: bold; font-size: 11px; border: 1px solid #1a73e8; color: #1a73e8; }
-        .toggle-watermark.off { color: #666; border-color: #ccc; }
+        .search-container {
+            position:absolute; top:15px; right:10px; z-index:5000;
+            display:flex; background:white; padding:5px;
+            border-radius:8px; box-shadow:0 2px 10px rgba(0,0,0,.2);
+        }
 
         .watermark-label-fixed {
-            background: none !important; border: none !important; box-shadow: none !important;
-            color: #1a73e8 !important; font-weight: 400 !important;
-            text-align: center; pointer-events: none !important; line-height: 1.1;
-            text-shadow: 1px 1px 1px white;
+            background:none!important;
+            border:none!important;
+            color:#1a73e8;
+            text-align:center;
+            pointer-events:none;
+            text-shadow:1px 1px 1px white;
         }
-        .label-micro { font-size: 10px !important; }
-        .label-macro { font-size: 14px !important; font-weight: 600 !important; }
-        
-        .btn-nav, .btn-ws { display: inline-block; margin-top: 8px; padding: 8px 12px; color: white !important; text-decoration: none !important; border-radius: 5px; font-weight: bold; font-size: 11px; border:none; cursor:pointer; }
-        .btn-nav { background-color: #3498db; margin-right: 5px; }
-        .btn-ws { background-color: #25D366; }
-        .locate-button { background: white; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 5px; font-size: 18px; border: 2px solid rgba(0,0,0,0.2); }
+        .label-macro { font-size:14px; font-weight:600; }
+        .label-micro { font-size:11px; }
+
+        .toggle-watermark {
+            position:absolute; bottom:30px; left:10px;
+            z-index:5000; background:white; padding:8px;
+            border-radius:5px; cursor:pointer;
+            border:1px solid #1a73e8; color:#1a73e8;
+        }
+        .toggle-watermark.off { color:#777; border-color:#ccc; }
+
+        .locate-button {
+            background:white;
+            width:34px; height:34px;
+            display:flex; align-items:center; justify-content:center;
+            cursor:pointer;
+            border-radius:5px;
+            border:2px solid rgba(0,0,0,.2);
+        }
     </style>
 </head>
+
 <body>
 
 <div class="map-title"><h1>SISTEMA POSTAL DE PANAMÁ</h1></div>
+
 <div class="search-container">
-    <input type="text" id="search-input" placeholder="Ej: J4199">
+    <input id="search-input" placeholder="Ej: J4199" style="border:none;padding:6px">
     <button id="search-btn">IR</button>
 </div>
 
@@ -51,123 +65,126 @@
 <script src="https://unpkg.com/@mapbox/leaflet-pip@latest/leaflet-pip.js"></script>
 
 <script>
-const mymap = L.map('mapid', { zoomControl: true }).setView([8.50, -80.0], 7.8);
+/* =======================
+   MAPA BASE
+======================= */
+const mymap = L.map('mapid').setView([8.5, -80], 7.8);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mymap);
 
 mymap.createPane('watermarkPane');
-mymap.getPane('watermarkPane').style.zIndex = 650;
 mymap.getPane('watermarkPane').style.pointerEvents = 'none';
 
-let labelsEnabled = true;
-const gridLayer = L.layerGroup().addTo(mymap);
-const labelLayer = L.layerGroup().addTo(mymap); 
-const selectionLayer = L.layerGroup().addTo(mymap);
-const zonasGeoLayer = L.layerGroup().addTo(mymap); 
-const cuadriculaLayer = L.layerGroup().addTo(mymap); 
+/* =======================
+   CAPAS
+======================= */
+const zonasGeoLayer = L.layerGroup().addTo(mymap);
+const cuadriculaLayer = L.layerGroup().addTo(mymap);
 const rutasLayer = L.layerGroup().addTo(mymap);
 const estafetasPointsLayer = L.layerGroup().addTo(mymap);
-const userLocationLayer = L.layerGroup().addTo(mymap);
+const selectionLayer = L.layerGroup().addTo(mymap);
+const labelLayer = L.layerGroup().addTo(mymap);
+
+/* 🔥 capas separadas (FIX) */
+const macroGridLayer = L.layerGroup().addTo(mymap);
+const microGridLayer = L.layerGroup().addTo(mymap);
+const nanoGridLayer  = L.layerGroup().addTo(mymap);
 
 let rawCuadricula = null;
 let rawZonas = null;
-const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ"; 
+let labelsEnabled = true;
 
-function getHierarchicalData(lat, lon, macroFeat) {
-    const b = L.geoJSON(macroFeat).getBounds();
-    const sw = b.getSouthWest(), ne = b.getNorthEast();
-    const sX = (ne.lng - sw.lng) / 24, sY = (ne.lat - sw.lat) / 24;
-    const ix = Math.max(0, Math.min(23, Math.floor((lon - sw.lng) / sX)));
-    const iy = Math.max(0, Math.min(23, Math.floor((lat - sw.lat) / sY)));
-    const micro = `${ALFABETO[ix]}${ALFABETO[iy]}${ix % 10}${iy % 10}${Math.floor((ix + iy) / 5)}`;
-    const mRect = [[sw.lat + (iy * sY), sw.lng + (ix * sX)], [sw.lat + ((iy + 1) * sY), sw.lng + ((ix + 1) * sX)]];
-    const nsX = sX / 10, nsY = sY / 10;
-    const nix = Math.max(0, Math.min(9, Math.floor((lon - (sw.lng + ix * sX)) / nsX)));
-    const niy = Math.max(0, Math.min(9, Math.floor((lat - (sw.lat + iy * sY)) / nsY)));
-    const nano = `${ALFABETO[(nix * 7 + niy * 13) % 24]}${niy}`;
-    const nRect = [[sw.lat + iy * sY + niy * nsY, sw.lng + ix * sX + nix * nsX], [sw.lat + iy * sY + (niy + 1) * nsY, sw.lng + ix * sX + (nix + 1) * nsX]];
-    return { micro, nano, mRect, nRect };
-}
+const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 
+/* =======================
+   REJILLA CORREGIDA
+======================= */
 function updateGridAndLabels() {
-    gridLayer.clearLayers();
+
+    macroGridLayer.clearLayers();
+    microGridLayer.clearLayers();
+    nanoGridLayer.clearLayers();
     labelLayer.clearLayers();
+
     const z = mymap.getZoom();
-    
-    // CORRECCIÓN: Ahora solo depende de si existe la data, no de si cuadriculaLayer está activa
     if (!rawCuadricula || z < 10) return;
 
     const bounds = mymap.getBounds();
+    const round = v => Number(v.toFixed(10));
+
     rawCuadricula.features.forEach(f => {
+
         const mB = L.geoJSON(f).getBounds();
         if (!bounds.intersects(mB)) return;
+
         const macroCode = f.properties.codigo;
 
-        // ETIQUETAS MACRO
-        if (z >= 10 && z < 14 && labelsEnabled && mymap.hasLayer(cuadriculaLayer)) {
+        if (z >= 10 && z < 14 && labelsEnabled) {
             L.marker(mB.getCenter(), {
-                pane: 'watermarkPane',
-                icon: L.divIcon({ className: 'watermark-label-fixed label-macro', html: macroCode, iconSize: [60, 20] }),
-                interactive: false
+                pane:'watermarkPane',
+                icon:L.divIcon({
+                    className:'watermark-label-fixed label-macro',
+                    html:macroCode,
+                    iconSize:[60,20]
+                })
             }).addTo(labelLayer);
         }
 
-        // NIVEL MICRO (Solo si "Rejilla Dinámica" está activa)
-        if (z >= 14 && mymap.hasLayer(gridLayer)) {
-            const sX = (mB.getEast() - mB.getWest()) / 24, sY = (mB.getNorth() - mB.getSouth()) / 24;
-            const gap = 0.02; // PADDING PARA EVITAR TRASLAPE
+        const sX = (mB.getEast() - mB.getWest()) / 24;
+        const sY = (mB.getNorth() - mB.getSouth()) / 24;
 
-            for (let i = 0; i < 24; i++) {
-                for (let j = 0; j < 24; j++) {
-                    let s = mB.getSouth() + (j * sY), w = mB.getWest() + (i * sX);
-                    let n = s + sY, e = w + sX;
-                    
-                    // Aplicar margen interno para que las líneas no choquen
-                    let rectB = L.latLngBounds([s + (sY*gap), w + (sX*gap)], [n - (sY*gap), e - (sX*gap)]);
-                    
-                    if (bounds.intersects(rectB)) {
-                        let weight = (z >= 18) ? 1.5 : 0.6;
-                        L.rectangle(rectB, { 
-                            color: "#1a73e8", weight: weight, opacity: 0.5, fillOpacity: 0.01, interactive: false 
-                        }).addTo(gridLayer);
-                        
-                        if (labelsEnabled && z >= 14 && z < 18 && mymap.hasLayer(cuadriculaLayer)) {
-                            const microC = `${ALFABETO[i]}${ALFABETO[j]}${i % 10}${j % 10}${Math.floor((i + j) / 5)}`;
-                            L.marker(rectB.getCenter(), {
-                                pane: 'watermarkPane',
-                                icon: L.divIcon({ 
-                                    className: 'watermark-label-fixed label-micro', 
-                                    html: `<div>${macroCode}</div><div>${microC}</div>`, 
-                                    iconSize: [60, 30] 
-                                }),
-                                interactive: false
-                            }).addTo(labelLayer);
-                        }
+        /* MICRO SOLO 14–17 */
+        if (z >= 14 && z < 18) {
+            for (let i=0;i<24;i++){
+                for (let j=0;j<24;j++){
+                    let s = round(mB.getSouth()+j*sY);
+                    let w = round(mB.getWest()+i*sX);
+                    let r = L.latLngBounds([s,w],[s+sY,w+sX]);
+                    if (!bounds.intersects(r)) continue;
+
+                    L.rectangle(r,{
+                        color:"#1a73e8",
+                        weight:0.4,
+                        opacity:0.6,
+                        fillOpacity:0,
+                        interactive:false
+                    }).addTo(microGridLayer);
+
+                    if (labelsEnabled) {
+                        const mc = `${ALFABETO[i]}${ALFABETO[j]}${i%10}${j%10}${Math.floor((i+j)/5)}`;
+                        L.marker(r.getCenter(),{
+                            pane:'watermarkPane',
+                            icon:L.divIcon({
+                                className:'watermark-label-fixed label-micro',
+                                html:`${macroCode}<br>${mc}`,
+                                iconSize:[60,28]
+                            })
+                        }).addTo(labelLayer);
                     }
                 }
             }
         }
 
-        // NIVEL NANO
-        if (z >= 18 && mymap.hasLayer(gridLayer)) {
-            const sX = (mB.getEast() - mB.getWest()) / 24, sY = (mB.getNorth() - mB.getSouth()) / 24;
-            const nsX = sX / 10, nsY = sY / 10;
-            const gap = 0.05;
+        /* NANO SOLO >=18 */
+        if (z >= 18 && mB.contains(mymap.getCenter())) {
+            const nsX = sX/10, nsY = sY/10;
+            for (let i=0;i<24;i++){
+                for (let j=0;j<24;j++){
+                    let ms = mB.getSouth()+j*sY;
+                    let mw = mB.getWest()+i*sX;
+                    for (let ni=0;ni<10;ni++){
+                        for (let nj=0;nj<10;nj++){
+                            let s = round(ms+nj*nsY);
+                            let w = round(mw+ni*nsX);
+                            let r = L.latLngBounds([s,w],[s+nsY,w+nsX]);
+                            if (!bounds.contains(r.getCenter())) continue;
 
-            if (mB.contains(mymap.getCenter())) {
-                for (let i = 0; i < 24; i++) {
-                    for (let j = 0; j < 24; j++) {
-                        let mS = mB.getSouth() + (j * sY), mW = mB.getWest() + (i * sX);
-                        if (bounds.intersects([[mS, mW], [mS + sY, mW + sX]])) {
-                            for (let ni = 0; ni < 10; ni++) {
-                                for (let nj = 0; nj < 10; nj++) {
-                                    let ns = mS + (nj * nsY), nw = mW + (ni * nsX);
-                                    let nn = ns + nsY, ne = nw + nsX;
-                                    let nRectB = L.latLngBounds([ns + (nsY*gap), nw + (nsX*gap)], [nn - (nsY*gap), ne - (nsX*gap)]);
-                                    if (bounds.contains(nRectB.getCenter())) {
-                                        L.rectangle(nRectB, { color: "#e67e22", weight: 0.4, opacity: 0.6, fillOpacity: 0.05, interactive: false }).addTo(gridLayer);
-                                    }
-                                }
-                            }
+                            L.rectangle(r,{
+                                color:"#e67e22",
+                                weight:0.3,
+                                opacity:0.7,
+                                fillOpacity:0,
+                                interactive:false
+                            }).addTo(nanoGridLayer);
                         }
                     }
                 }
@@ -176,85 +193,55 @@ function updateGridAndLabels() {
     });
 }
 
-$('#toggle-wm').click(function() {
-    labelsEnabled = !labelsEnabled;
-    $(this).toggleClass('off').text(labelsEnabled ? "TEXTO: ON" : "TEXTO: OFF");
+/* =======================
+   EVENTOS
+======================= */
+mymap.on('moveend zoomend', updateGridAndLabels);
+
+$('#toggle-wm').click(()=>{
+    labelsEnabled=!labelsEnabled;
+    $('#toggle-wm').toggleClass('off').text(labelsEnabled?'TEXTO: ON':'TEXTO: OFF');
     updateGridAndLabels();
 });
 
-// ESCUCHA CAMBIOS EN EL SELECTOR PARA RE-DIBUJAR
-mymap.on('overlayadd overlayremove', updateGridAndLabels);
-mymap.on('moveend zoomend', updateGridAndLabels);
-
-$.getJSON("estafetas.geojson", d => { rawZonas = d; L.geoJSON(d, {style:{color:"#000", weight:1.5, fillOpacity:0.1, fillColor:"#888"}}).addTo(zonasGeoLayer); });
-$.getJSON("cuadricula.geojson", d => { rawCuadricula = d; L.geoJSON(d, {style:{color:"#2c3e50", weight:1, fillOpacity:0.05}}).addTo(cuadriculaLayer); updateGridAndLabels(); });
-$.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style:{color:"#e74c3c", weight:2}}).addTo(rutasLayer));
-$.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:6, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasPointsLayer));
-
-mymap.on("click", function (e) {
-    selectionLayer.clearLayers();
-    if (!rawCuadricula || !rawZonas) return;
-    const hZ = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawZonas));
-    const hC = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawCuadricula));
-
-    if (hC.length === 0) {
-        L.popup().setLatLng(e.latlng).setContent("<b>Área no válida</b>").openOn(mymap);
-        return;
-    }
-
-    const useZonas = mymap.hasLayer(zonasGeoLayer) && hZ.length > 0;
-    const macroID = useZonas ? hZ[0].feature.properties.VM_LEVEL : hC[0].feature.properties.codigo;
-    const data = getHierarchicalData(e.latlng.lat, e.latlng.lng, hC[0].feature);
-    let titulo = "ZONAS POSTALES", finalCode = macroID;
-    const z = mymap.getZoom();
-
-    if (z < 14) {
-        L.geoJSON(useZonas ? hZ[0].feature : hC[0].feature, {style:{color:"#1a73e8", weight:4, fillOpacity:0.3}}).addTo(selectionLayer);
-    } else if (z >= 14 && z < 17) {
-        titulo = "ÁREA POSTAL";
-        finalCode += `-${data.micro}`;
-        L.rectangle(data.mRect, {color:"#1a73e8", weight:4, fillOpacity:0.2}).addTo(selectionLayer);
-    } else {
-        titulo = "CÓDIGO POSTAL";
-        finalCode += `-${data.micro}-${data.nano}`;
-        L.rectangle(data.nRect, {color:"#e67e22", weight:5, fillOpacity:0.4}).addTo(selectionLayer);
-    }
-
-    const ws = encodeURIComponent(`📍 Mi ubicación: ${finalCode}\nGPS: ${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`);
-    L.popup({offset:[0,-55]}).setLatLng(e.latlng).setContent(`<div style="text-align:center;"><small>${titulo}</small><br><b>${finalCode}</b><br><button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${e.latlng.lat},${e.latlng.lng}')">📍 MAPS</button><button class="btn-ws" onclick="window.open('https://wa.me/?text=${ws}')">💬 WS</button></div>`).openOn(mymap);
+/* =======================
+   CARGA DE DATOS
+======================= */
+$.getJSON("cuadricula.geojson",d=>{
+    rawCuadricula=d;
+    L.geoJSON(d,{style:{color:"#2c3e50",weight:1,fillOpacity:.05}}).addTo(cuadriculaLayer);
+    updateGridAndLabels();
 });
 
-document.getElementById('search-btn').addEventListener('click', () => {
-    const code = document.getElementById('search-input').value.trim().toUpperCase();
-    if (!code || !rawCuadricula) return;
-    let f = rawCuadricula.features.find(feat => feat.properties.codigo === code.split('-')[0]);
-    if (f) mymap.fitBounds(L.geoJSON(f).getBounds());
+$.getJSON("estafetas.geojson",d=>{
+    rawZonas=d;
+    L.geoJSON(d,{style:{color:"#000",weight:1.5,fillOpacity:.1}}).addTo(zonasGeoLayer);
 });
 
-mymap.on('locationfound', e => {
-    userLocationLayer.clearLayers();
-    L.circleMarker(e.latlng, { radius: 7, color: 'white', fillColor: '#3498db', fillOpacity: 1, weight: 2 }).addTo(userLocationLayer);
+$.getJSON("estafetasl.geojson",d=>{
+    L.geoJSON(d,{style:{color:"#e74c3c",weight:2}}).addTo(rutasLayer);
 });
 
-const LocateControl = L.Control.extend({
-    options: { position: 'topleft' },
-    onAdd: function() {
-        const c = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
-        const b = L.DomUtil.create('a', 'locate-button', c);
-        b.innerHTML = '🎯';
-        L.DomEvent.on(b, 'click', e => { L.DomEvent.stopPropagation(e); mymap.locate({setView:true, maxZoom:17}); });
-        return c;
-    }
+$.getJSON("estafetasp.geojson",d=>{
+    L.geoJSON(d,{
+        pointToLayer:(f,ll)=>L.circleMarker(ll,{
+            radius:6,color:"#27ae60",fillColor:"#2ecc71",fillOpacity:1
+        })
+    }).addTo(estafetasPointsLayer);
 });
-mymap.addControl(new LocateControl());
 
-L.control.layers(null, {
-    "Zonas": zonasGeoLayer,
-    "Cuadrícula": cuadriculaLayer,
-    "Rutas": rutasLayer,
-    "Estafetas": estafetasPointsLayer,
-    "Rejilla Dinámica": gridLayer
-}, {collapsed: false}).addTo(mymap);
+/* =======================
+   CONTROL DE CAPAS
+======================= */
+L.control.layers(null,{
+    "Zonas":zonasGeoLayer,
+    "Cuadrícula":cuadriculaLayer,
+    "Micro":microGridLayer,
+    "Nano":nanoGridLayer,
+    "Rutas":rutasLayer,
+    "Estafetas":estafetasPointsLayer
+},{collapsed:false}).addTo(mymap);
 </script>
+
 </body>
 </html>
