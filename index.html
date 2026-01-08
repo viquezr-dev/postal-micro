@@ -22,8 +22,7 @@
 
         .watermark-label-fixed {
             background: none !important; border: none !important; box-shadow: none !important;
-            color: #1a73e8 !important; 
-            font-weight: 400 !important;
+            color: #1a73e8 !important; font-weight: 400 !important;
             text-align: center; pointer-events: none !important; line-height: 1.1;
             text-shadow: 1px 1px 1px white;
         }
@@ -64,7 +63,7 @@ const gridLayer = L.layerGroup().addTo(mymap);
 const labelLayer = L.layerGroup().addTo(mymap); 
 const selectionLayer = L.layerGroup().addTo(mymap);
 const zonasGeoLayer = L.layerGroup().addTo(mymap); 
-const cuadriculaLayer = L.layerGroup().addTo(mymap);
+const cuadriculaLayer = L.layerGroup().addTo(mymap); // Capa base (Macro)
 const rutasLayer = L.layerGroup().addTo(mymap);
 const estafetasPointsLayer = L.layerGroup().addTo(mymap);
 const userLocationLayer = L.layerGroup().addTo(mymap);
@@ -94,7 +93,8 @@ function updateGridAndLabels() {
     labelLayer.clearLayers();
     const z = mymap.getZoom();
     
-    if (!rawCuadricula || z < 10) return;
+    // MEJORA: Si la capa "Cuadrícula" está apagada en el selector, no mostramos etiquetas ni rejilla dinámica
+    if (!mymap.hasLayer(cuadriculaLayer) || !rawCuadricula || z < 10) return;
 
     const bounds = mymap.getBounds();
     rawCuadricula.features.forEach(f => {
@@ -103,6 +103,7 @@ function updateGridAndLabels() {
 
         const macroCode = f.properties.codigo;
 
+        // NIVEL MACRO
         if (z >= 10 && z < 14 && labelsEnabled) {
             L.marker(mB.getCenter(), {
                 pane: 'watermarkPane',
@@ -111,6 +112,7 @@ function updateGridAndLabels() {
             }).addTo(labelLayer);
         }
 
+        // NIVEL MICRO
         if (z >= 14) {
             const sX = (mB.getEast() - mB.getWest()) / 24, sY = (mB.getNorth() - mB.getSouth()) / 24;
             for (let i = 0; i < 24; i++) {
@@ -118,12 +120,11 @@ function updateGridAndLabels() {
                     let s = mB.getSouth() + (j * sY), w = mB.getWest() + (i * sX);
                     let rectB = L.latLngBounds([s, w], [s + sY, w + sX]);
                     if (bounds.intersects(rectB)) {
-                        // REJILLA MICRO: Más gruesa si estamos en zoom Nano para servir de guía
                         let weight = (z >= 18) ? 1.5 : 0.5;
                         let color = (z >= 18) ? "#1a73e8" : "#3498db";
+                        // Solo dibujamos la rejilla dinámica si la capa base está activa
                         L.rectangle(rectB, { color: color, weight: weight, fillOpacity: 0.01, interactive: false }).addTo(gridLayer);
                         
-                        // TEXTO: Sin guion en el watermark
                         if (labelsEnabled && z >= 14 && z < 18) {
                             const microC = `${ALFABETO[i]}${ALFABETO[j]}${i % 10}${j % 10}${Math.floor((i + j) / 5)}`;
                             L.marker(rectB.getCenter(), {
@@ -141,6 +142,7 @@ function updateGridAndLabels() {
             }
         }
 
+        // NIVEL NANO
         if (z >= 18) {
             const sX = (mB.getEast() - mB.getWest()) / 24, sY = (mB.getNorth() - mB.getSouth()) / 24;
             const nsX = sX / 10, nsY = sY / 10;
@@ -166,9 +168,15 @@ function updateGridAndLabels() {
     });
 }
 
+// BOTÓN TEXTO
 $('#toggle-wm').click(function() {
     labelsEnabled = !labelsEnabled;
     $(this).toggleClass('off').text(labelsEnabled ? "TEXTO: ON" : "TEXTO: OFF");
+    updateGridAndLabels();
+});
+
+// ESCUCHAR CUANDO SE APAGA LA CAPA EN EL SELECTOR
+mymap.on('overlayadd overlayremove', function() {
     updateGridAndLabels();
 });
 
