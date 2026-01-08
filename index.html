@@ -6,41 +6,44 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
-        body, html, #mapid { width: 100%; height: 100%; margin: 0; padding: 0; font-family: 'Roboto', 'Arial', sans-serif; }
+        body, html, #mapid { width: 100%; height: 100%; margin: 0; padding: 0; font-family: 'Arial', sans-serif; }
         .leaflet-popup { margin-bottom: 70px !important; }
         .map-title { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 4000; text-align: center; pointer-events: none; width: 90%; }
-        .map-title h1 { margin: 0; font-size: 16px; color: #5f6368; font-weight: 400; text-shadow: 0 0 3px white; letter-spacing: 1px; }
+        .map-title h1 { margin: 0; font-size: 18px; color: #2c3e50; font-weight: bold; text-shadow: 0 0 5px white; }
         
-        .search-container { position: absolute; top: 15px; right: 10px; z-index: 5000; display: flex; background: white; padding: 4px; border-radius: 24px; box-shadow: 0 1px 6px rgba(32,33,36,0.28); width: 260px; border: 1px solid #dfe1e5; }
-        input#search-input { flex: 1; border: none; padding: 8px 15px; font-size: 14px; outline: none; border-radius: 24px; }
-        button#search-btn { background: none; color: #1a73e8; border: none; padding: 8px 12px; cursor: pointer; font-weight: 500; }
-        
-        .leaflet-top.leaflet-right { top: 80px !important; }
+        .search-container { position: absolute; top: 15px; right: 10px; z-index: 5000; display: flex; background: white; padding: 5px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); width: 280px; }
+        input#search-input { flex: 1; border: none; padding: 8px; font-size: 14px; outline: none; }
+        button#search-btn { background: #2c3e50; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; }
 
-        /* ESTILO TIPO PLUS CODES (MINIMALISTA) */
+        /* BOTÓN PARA APAGAR MARCAS DE AGUA */
+        .toggle-watermark { position: absolute; bottom: 20px; left: 10px; z-index: 5000; background: white; padding: 10px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); cursor: pointer; font-weight: bold; font-size: 12px; border: 2px solid #2c3e50; }
+        .toggle-watermark.off { background: #eee; color: #999; border-color: #ccc; }
+
+        /* ESTILO MARCA DE AGUA (AZUL LEGIBLE) */
         .watermark-label-fixed {
             background: none !important; border: none !important; box-shadow: none !important;
-            color: #70757a !important; /* Gris Google Maps */
-            font-weight: 400 !important;
-            text-align: center; pointer-events: none !important; 
-            white-space: nowrap;
+            color: #1a73e8 !important; /* Azul vibrante */
+            font-weight: 800 !important;
+            text-align: center; pointer-events: none !important; white-space: nowrap;
+            text-shadow: 1px 1px 2px white, -1px -1px 2px white;
         }
-        .label-macro { font-size: 14px !important; letter-spacing: 1px; }
-        .label-micro { font-size: 10px !important; color: #8a8a8a !important; }
-
-        .btn-nav, .btn-ws { display: inline-block; margin-top: 8px; padding: 8px 12px; color: white !important; text-decoration: none !important; border-radius: 4px; font-weight: 500; font-size: 11px; border:none; cursor:pointer; }
-        .btn-nav { background-color: #1a73e8; margin-right: 5px; }
-        .btn-ws { background-color: #34a853; }
-        .locate-button { background: white; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 4px; font-size: 18px; border: 2px solid rgba(0,0,0,0.1); }
+        .label-micro { font-size: 12px !important; }
+        
+        .btn-nav, .btn-ws { display: inline-block; margin-top: 8px; padding: 8px 12px; color: white !important; text-decoration: none !important; border-radius: 5px; font-weight: bold; font-size: 11px; border:none; cursor:pointer; }
+        .btn-nav { background-color: #3498db; margin-right: 5px; }
+        .btn-ws { background-color: #25D366; }
+        .locate-button { background: white; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 5px; font-size: 18px; border: 2px solid rgba(0,0,0,0.2); }
     </style>
 </head>
 <body>
 
 <div class="map-title"><h1>SISTEMA POSTAL DE PANAMÁ</h1></div>
 <div class="search-container">
-    <input type="text" id="search-input" placeholder="Buscar código...">
-    <button id="search-btn">BUSCAR</button>
+    <input type="text" id="search-input" placeholder="Ej: J4199">
+    <button id="search-btn">IR</button>
 </div>
+
+<div id="toggle-wm" class="toggle-watermark">ETIQUETAS: ON</div>
 <div id="mapid"></div>
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -55,6 +58,7 @@ mymap.createPane('watermarkPane');
 mymap.getPane('watermarkPane').style.zIndex = 650;
 mymap.getPane('watermarkPane').style.pointerEvents = 'none';
 
+let labelsEnabled = true;
 const gridLayer = L.layerGroup().addTo(mymap);
 const labelLayer = L.layerGroup().addTo(mymap); 
 const selectionLayer = L.layerGroup().addTo(mymap);
@@ -74,16 +78,13 @@ function getHierarchicalData(lat, lon, macroFeat) {
     const sX = (ne.lng - sw.lng) / 24, sY = (ne.lat - sw.lat) / 24;
     const ix = Math.max(0, Math.min(23, Math.floor((lon - sw.lng) / sX)));
     const iy = Math.max(0, Math.min(23, Math.floor((lat - sw.lat) / sY)));
-    
     const micro = `${ALFABETO[ix]}${ALFABETO[iy]}${ix % 10}${iy % 10}${Math.floor((ix + iy) / 5)}`;
     const mRect = [[sw.lat + (iy * sY), sw.lng + (ix * sX)], [sw.lat + ((iy + 1) * sY), sw.lng + ((ix + 1) * sX)]];
-    
     const nsX = sX / 10, nsY = sY / 10;
     const nix = Math.max(0, Math.min(9, Math.floor((lon - (sw.lng + ix * sX)) / nsX)));
     const niy = Math.max(0, Math.min(9, Math.floor((lat - (sw.lat + iy * sY)) / nsY)));
     const nano = `${ALFABETO[(nix * 7 + niy * 13) % 24]}${niy}`;
     const nRect = [[sw.lat + iy * sY + niy * nsY, sw.lng + ix * sX + nix * nsX], [sw.lat + iy * sY + (niy + 1) * nsY, sw.lng + ix * sX + (nix + 1) * nsX]];
-    
     return { micro, nano, mRect, nRect };
 }
 
@@ -91,7 +92,9 @@ function updateGridAndLabels() {
     gridLayer.clearLayers();
     labelLayer.clearLayers();
     const z = mymap.getZoom();
-    if (!rawCuadricula || !mymap.hasLayer(gridLayer)) return;
+    
+    // Si están apagadas o el zoom es muy bajo (<10), no dibujamos nada para no saturar
+    if (!labelsEnabled || !rawCuadricula || z < 10) return;
 
     const bounds = mymap.getBounds();
     rawCuadricula.features.forEach(f => {
@@ -100,27 +103,25 @@ function updateGridAndLabels() {
 
         const macroCode = f.properties.codigo;
 
-        // NIVEL MACRO (Zoom < 14) - Limpio y centrado
-        if (z < 14) {
+        // NIVEL MACRO (Zoom 10-13)
+        if (z >= 10 && z < 14) {
             L.marker(mB.getCenter(), {
                 pane: 'watermarkPane',
-                icon: L.divIcon({ className: 'watermark-label-fixed label-macro', html: macroCode, iconSize: [60, 20] }),
+                icon: L.divIcon({ className: 'watermark-label-fixed', html: macroCode, iconSize: [60, 20] }),
                 interactive: false
             }).addTo(labelLayer);
         }
 
-        // NIVEL MICRO (Zoom 14-17) - Cuadrícula azul muy clara
-        if (z >= 14 && z < 18) {
+        // NIVEL MICRO (Zoom 14-17)
+        if (z >= 14) {
             const sX = (mB.getEast() - mB.getWest()) / 24, sY = (mB.getNorth() - mB.getSouth()) / 24;
             for (let i = 0; i < 24; i++) {
                 for (let j = 0; j < 24; j++) {
                     let s = mB.getSouth() + (j * sY), w = mB.getWest() + (i * sX);
                     let rectB = L.latLngBounds([s, w], [s + sY, w + sX]);
                     if (bounds.intersects(rectB)) {
-                        L.rectangle(rectB, { color: "#dadce0", weight: 0.5, fillOpacity: 0, interactive: false }).addTo(gridLayer);
-                        
-                        // Solo poner etiqueta Micro si el zoom no es demasiado alto para no solapar con Nano
-                        if (z < 17) {
+                        L.rectangle(rectB, { color: "#3498db", weight: 0.5, fillOpacity: 0.02, interactive: false }).addTo(gridLayer);
+                        if (z < 18) { // Solo etiquetas Micro hasta zoom 17
                             const microC = `${ALFABETO[i]}${ALFABETO[j]}${i % 10}${j % 10}${Math.floor((i + j) / 5)}`;
                             L.marker(rectB.getCenter(), {
                                 pane: 'watermarkPane',
@@ -132,84 +133,72 @@ function updateGridAndLabels() {
                 }
             }
         }
-
-        // NIVEL NANO (Zoom 18+) - SIN MARCAS DE AGUA (Solo cuadrícula)
-        if (z >= 18) {
-            const sX = (mB.getEast() - mB.getWest()) / 24, sY = (mB.getNorth() - mB.getSouth()) / 24;
-            const nsX = sX / 10, nsY = sY / 10;
-            if (mB.contains(mymap.getCenter())) {
-                for (let i = 0; i < 24; i++) {
-                    for (let j = 0; j < 24; j++) {
-                        let mS = mB.getSouth() + (j * sY), mW = mB.getWest() + (i * sX);
-                        if (bounds.intersects([[mS, mW], [mS + sY, mW + sX]])) {
-                            for (let ni = 0; ni < 10; ni++) {
-                                for (let nj = 0; nj < 10; nj++) {
-                                    let ns = mS + (nj * nsY), nw = mW + (ni * nsX);
-                                    let nRectB = L.latLngBounds([ns, nw], [ns + nsY, nw + nsX]);
-                                    if (bounds.contains(nRectB.getCenter())) {
-                                        L.rectangle(nRectB, { color: "#e8eaed", weight: 0.3, fillOpacity: 0.1, interactive: false }).addTo(gridLayer);
-                                        // AQUÍ SE ELIMINÓ EL L.marker PARA QUE NO HAYA MARCA DE AGUA NANO
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     });
 }
 
+// Botón para apagar/encender etiquetas
+$('#toggle-wm').click(function() {
+    labelsEnabled = !labelsEnabled;
+    $(this).toggleClass('off').text(labelsEnabled ? "ETIQUETAS: ON" : "ETIQUETAS: OFF");
+    updateGridAndLabels();
+});
+
 mymap.on('moveend zoomend', updateGridAndLabels);
 
-// Carga de archivos
-$.getJSON("estafetas.geojson", d => { rawZonas = d; L.geoJSON(d, {style:{color:"#bdc1c6", weight:1, fillOpacity:0.05}}).addTo(zonasGeoLayer); });
-$.getJSON("cuadricula.geojson", d => { rawCuadricula = d; L.geoJSON(d, {style:{color:"#dadce0", weight:1, fillOpacity:0.02}}).addTo(cuadriculaLayer); updateGridAndLabels(); });
-$.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style:{color:"#f28b82", weight:1.5}}).addTo(rutasLayer));
-$.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:4, color:"#81c995", fillColor:"#81c995", fillOpacity:1})}).addTo(estafetasPointsLayer));
+// Cargas JSON
+$.getJSON("estafetas.geojson", d => { rawZonas = d; L.geoJSON(d, {style:{color:"#000", weight:1.5, fillOpacity:0.1, fillColor:"#888"}}).addTo(zonasGeoLayer); });
+$.getJSON("cuadricula.geojson", d => { rawCuadricula = d; L.geoJSON(d, {style:{color:"#2c3e50", weight:1, fillOpacity:0.05}}).addTo(cuadriculaLayer); updateGridAndLabels(); });
+$.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style:{color:"#e74c3c", weight:2}}).addTo(rutasLayer));
+$.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:6, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasPointsLayer));
 
-// Click
+// EVENTO CLICK RESTAURADO CON VALIDACIÓN DE ÁREA
 mymap.on("click", function (e) {
     selectionLayer.clearLayers();
-    if (!rawCuadricula) return;
+    if (!rawCuadricula || !rawZonas) return;
+    
+    const hZ = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawZonas));
     const hC = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawCuadricula));
-    if (hC.length === 0) return;
 
+    if (hC.length === 0) {
+        L.popup().setLatLng(e.latlng).setContent("<b>Área no válida</b><br>Fuera del sistema postal.").openOn(mymap);
+        return;
+    }
+
+    const useZonas = mymap.hasLayer(zonasGeoLayer) && hZ.length > 0;
+    const macroID = useZonas ? hZ[0].feature.properties.VM_LEVEL : hC[0].feature.properties.codigo;
     const data = getHierarchicalData(e.latlng.lat, e.latlng.lng, hC[0].feature);
+    
+    let titulo = "ZONAS POSTALES", finalCode = macroID;
     const z = mymap.getZoom();
-    let finalCode = hC[0].feature.properties.codigo;
 
-    if (z >= 14) finalCode += `-${data.micro}`;
-    if (z >= 17) finalCode += `-${data.nano}`;
+    if (z < 14) {
+        L.geoJSON(useZonas ? hZ[0].feature : hC[0].feature, {style:{color:"#1a73e8", weight:4, fillOpacity:0.3}}).addTo(selectionLayer);
+    } else if (z >= 14 && z < 17) {
+        titulo = "ÁREA POSTAL";
+        finalCode += `-${data.micro}`;
+        L.rectangle(data.mRect, {color:"#1a73e8", weight:4, fillOpacity:0.2}).addTo(selectionLayer);
+    } else {
+        titulo = "CÓDIGO POSTAL";
+        finalCode += `-${data.micro}-${data.nano}`;
+        L.rectangle(data.nRect, {color:"#e67e22", weight:5, fillOpacity:0.4}).addTo(selectionLayer);
+    }
 
-    L.rectangle(z >= 17 ? data.nRect : data.mRect, {color:"#1a73e8", weight:2, fillOpacity:0.15}).addTo(selectionLayer);
-
-    const ws = encodeURIComponent(`📍 Mi ubicación: ${finalCode}\nGPS: ${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`);
-    L.popup({offset:[0,-45]}).setLatLng(e.latlng).setContent(`
-        <div style="text-align:center; min-width:150px;">
-            <span style="font-size:15px; color:#3c4043; font-weight:500;">${finalCode}</span><br>
-            <button class="btn-nav" onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${e.latlng.lat},${e.latlng.lng}')">COMO LLEGAR</button>
-            <button class="btn-ws" onclick="window.open('https://wa.me/?text=${ws}')">WHATSAPP</button>
-        </div>
-    `).openOn(mymap);
+    const ws = encodeURIComponent(`📍 Mi ubicación Postal: ${finalCode}\nGPS: ${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`);
+    L.popup({offset:[0,-55]}).setLatLng(e.latlng).setContent(`<div style="text-align:center;"><small style="color:#7f8c8d; font-weight:bold;">${titulo}</small><br><span style="font-size:16px; font-weight:bold;">${finalCode}</span><br><button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${e.latlng.lat},${e.latlng.lng}')">📍 MAPS</button><button class="btn-ws" onclick="window.open('https://wa.me/?text=${ws}')">💬 WS</button></div>`).openOn(mymap);
 });
 
 // Buscador
 document.getElementById('search-btn').addEventListener('click', () => {
     const code = document.getElementById('search-input').value.trim().toUpperCase();
     if (!code || !rawCuadricula) return;
-    const parts = code.split('-');
-    let f = rawCuadricula.features.find(feat => feat.properties.codigo === parts[0]);
-    if (f) {
-        const b = L.geoJSON(f).getBounds();
-        mymap.fitBounds(b);
-    }
+    let f = rawCuadricula.features.find(feat => feat.properties.codigo === code.split('-')[0]);
+    if (f) mymap.fitBounds(L.geoJSON(f).getBounds());
 });
 
-// Localización
+// Ubicación
 mymap.on('locationfound', e => {
     userLocationLayer.clearLayers();
-    L.circleMarker(e.latlng, { radius: 6, color: '#fff', fillColor: '#1a73e8', fillOpacity: 1, weight: 2 }).addTo(userLocationLayer);
+    L.circleMarker(e.latlng, { radius: 7, color: 'white', fillColor: '#3498db', fillOpacity: 1, weight: 2 }).addTo(userLocationLayer);
 });
 
 const LocateControl = L.Control.extend({
@@ -226,12 +215,11 @@ mymap.addControl(new LocateControl());
 
 L.control.layers(null, {
     "Zonas": zonasGeoLayer,
-    "Macro": cuadriculaLayer,
+    "Cuadrícula": cuadriculaLayer,
     "Rutas": rutasLayer,
     "Estafetas": estafetasPointsLayer,
-    "Rejilla": gridLayer
+    "Rejilla Dinámica": gridLayer
 }, {collapsed: false}).addTo(mymap);
-
 </script>
 </body>
 </html>
