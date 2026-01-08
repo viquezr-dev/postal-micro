@@ -6,18 +6,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
-        body, html, #mapid { width: 100%; height: 100%; margin: 0; padding: 0; font-family: sans-serif; }
+        body, html, #mapid { width: 100%; height: 100%; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .leaflet-popup { margin-bottom: 70px !important; }
         .map-title { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 4000; text-align: center; pointer-events: none; width: 90%; }
-        .map-title h1 { margin: 0; font-size: 18px; color: #2c3e50; text-shadow: 0 0 5px white; }
-        .search-container { position: absolute; top: 15px; right: 10px; z-index: 5000; display: flex; background: white; padding: 5px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); }
-        input#search-input { border: none; padding: 8px; outline: none; }
-        button#search-btn { background: #2c3e50; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; }
-        .toggle-watermark { position: absolute; bottom: 30px; left: 10px; z-index: 5000; background: white; padding: 10px; border-radius: 5px; cursor: pointer; font-size: 11px; border: 1px solid #1a73e8; color: #1a73e8; }
-        .watermark-label-fixed { background: none!important; border:none!important; color: #1a73e8!important; text-align: center; pointer-events: none!important; text-shadow: 1px 1px 1px white; }
-        .label-micro { font-size: 10px!important; }
-        .btn-nav, .btn-ws { display: inline-block; margin-top: 8px; padding: 8px 12px; color: white!important; text-decoration: none!important; border-radius: 5px; font-weight: bold; font-size: 11px; margin-right:5px;}
-        .btn-nav { background-color: #3498db; }
+        .map-title h1 { margin: 0; font-size: 18px; color: #2c3e50; font-weight: bold; text-shadow: 0 0 5px white; }
+        
+        .search-container { position: absolute; top: 15px; right: 10px; z-index: 5000; display: flex; background: white; padding: 5px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); width: 280px; }
+        input#search-input { flex: 1; border: none; padding: 8px; font-size: 14px; outline: none; }
+        button#search-btn { background: #2c3e50; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+
+        .leaflet-top.leaflet-right { top: 100px !important; }
+
+        .toggle-watermark { position: absolute; bottom: 30px; left: 10px; z-index: 5000; background: white; padding: 10px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); cursor: pointer; font-weight: bold; font-size: 11px; border: 1px solid #1a73e8; color: #1a73e8; }
+        .toggle-watermark.off { color: #666; border-color: #ccc; }
+
+        .watermark-label-fixed {
+            background: none !important; border: none !important; box-shadow: none !important;
+            color: #1a73e8 !important; font-weight: 400 !important;
+            text-align: center; pointer-events: none !important; line-height: 1.1;
+            text-shadow: 1px 1px 1px white;
+        }
+        .label-micro { font-size: 11px !important; }
+        .label-macro { font-size: 14px !important; font-weight: 600 !important; }
+        
+        .btn-nav, .btn-ws { display: inline-block; margin-top: 8px; padding: 8px 12px; color: white !important; text-decoration: none !important; border-radius: 5px; font-weight: bold; font-size: 11px; border:none; cursor:pointer; }
+        .btn-nav { background-color: #3498db; margin-right: 5px; }
         .btn-ws { background-color: #25D366; }
+        .locate-button { background: white; width: 34px; height: 34px; display: flex; align-items: center; justify-content: center; cursor: pointer; border-radius: 5px; font-size: 18px; border: 2px solid rgba(0,0,0,0.2); }
     </style>
 </head>
 <body>
@@ -27,6 +42,7 @@
     <input type="text" id="search-input" placeholder="Ej: J4199">
     <button id="search-btn">IR</button>
 </div>
+
 <div id="toggle-wm" class="toggle-watermark">TEXTO: ON</div>
 <div id="mapid"></div>
 
@@ -35,113 +51,221 @@
 <script src="https://unpkg.com/@mapbox/leaflet-pip@latest/leaflet-pip.js"></script>
 
 <script>
-const mymap = L.map('mapid').setView([8.50, -80.0], 8);
+const mymap = L.map('mapid', { zoomControl: true }).setView([8.50, -80.0], 7.8);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mymap);
 
+mymap.createPane('watermarkPane');
+mymap.getPane('watermarkPane').style.zIndex = 650;
+mymap.getPane('watermarkPane').style.pointerEvents = 'none';
+
+let labelsEnabled = true;
 const gridLayer = L.layerGroup().addTo(mymap);
-const labelLayer = L.layerGroup().addTo(mymap);
+const labelLayer = L.layerGroup().addTo(mymap); 
 const selectionLayer = L.layerGroup().addTo(mymap);
-const cuadriculaLayer = L.layerGroup().addTo(mymap);
+const zonasGeoLayer = L.layerGroup().addTo(mymap); 
+const cuadriculaLayer = L.layerGroup().addTo(mymap); 
+const rutasLayer = L.layerGroup().addTo(mymap);
+const estafetasPointsLayer = L.layerGroup().addTo(mymap);
+const userLocationLayer = L.layerGroup().addTo(mymap);
 
 let rawCuadricula = null;
-let labelsEnabled = true;
-const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+let rawZonas = null;
+const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ"; 
 
-// Función para interpolar puntos en polígonos no rectangulares
+// --- MOTOR DE PRECISIÓN GEOMÉTRICA ---
 function getPointInGrid(coords, col, row, totalCols, totalRows) {
-    const pTopLeft = coords[0], pTopRight = coords[1], pBottomRight = coords[2], pBottomLeft = coords[3];
-    
-    // Interpolación bilineal para manejar la distorsión del GeoJSON
+    const p0 = coords[0], p1 = coords[1], p2 = coords[2], p3 = coords[3];
     const tX = col / totalCols;
     const tY = row / totalRows;
-
-    const lat = (1-tY)*((1-tX)*pTopLeft[1] + tX*pTopRight[1]) + tY*((1-tX)*pBottomLeft[1] + tX*pBottomRight[1]);
-    const lng = (1-tY)*((1-tX)*pTopLeft[0] + tX*pTopRight[0]) + tY*((1-tX)*pBottomLeft[0] + tX*pBottomRight[0]);
-    
+    const lat = (1-tY)*((1-tX)*p0[1] + tX*p1[1]) + tY*((1-tX)*p3[1] + tX*p2[1]);
+    const lng = (1-tY)*((1-tX)*p0[0] + tX*p1[0]) + tY*((1-tX)*p3[0] + tX*p2[0]);
     return [lat, lng];
+}
+
+function getHierarchicalData(lat, lon, feature) {
+    const coords = feature.geometry.coordinates[0];
+    
+    // Encontrar posición relativa T (0 a 1) dentro del polígono distorsionado
+    // Usamos una aproximación basada en el bounding box para los índices
+    const b = L.geoJSON(feature).getBounds();
+    const sw = b.getSouthWest(), ne = b.getNorthEast();
+    const ix = Math.max(0, Math.min(23, Math.floor(((lon - sw.lng) / (ne.lng - sw.lng)) * 24)));
+    const iy = Math.max(0, Math.min(23, Math.floor(((lat - sw.lat) / (ne.lat - sw.lat)) * 24)));
+    
+    const micro = `${ALFABETO[ix]}${ALFABETO[iy]}${ix % 10}${iy % 10}${Math.floor((ix + iy) / 5)}`;
+
+    // Puntos del polígono MICRO (4 esquinas interpoladas)
+    const pM0 = getPointInGrid(coords, ix, iy, 24, 24);
+    const pM1 = getPointInGrid(coords, ix+1, iy, 24, 24);
+    const pM2 = getPointInGrid(coords, ix+1, iy+1, 24, 24);
+    const pM3 = getPointInGrid(coords, ix, iy+1, 24, 24);
+
+    // Nivel NANO (dentro del micro)
+    const nix = Math.max(0, Math.min(9, Math.floor(((lon - Math.min(pM0[1], pM3[1])) / (Math.abs(pM1[1]-pM0[1]) || 0.001)) * 10)));
+    const niy = Math.max(0, Math.min(9, Math.floor(((lat - Math.min(pM0[0], pM1[0])) / (Math.abs(pM3[0]-pM0[0]) || 0.001)) * 10)));
+    const nano = `${ALFABETO[(nix * 7 + niy * 13) % 24]}${niy}`;
+
+    // Polígonos para SelectionLayer
+    const mPoly = [pM0, pM1, pM2, pM3];
+    const nPoly = [
+        getPointInGrid(coords, ix + (nix/10), iy + (niy/10), 24, 24),
+        getPointInGrid(coords, ix + ((nix+1)/10), iy + (niy/10), 24, 24),
+        getPointInGrid(coords, ix + ((nix+1)/10), iy + ((niy+1)/10), 24, 24),
+        getPointInGrid(coords, ix + (nix/10), iy + ((niy+1)/10), 24, 24)
+    ];
+
+    return { micro, nano, mPoly, nPoly };
 }
 
 function updateGridAndLabels() {
     gridLayer.clearLayers();
     labelLayer.clearLayers();
     const z = mymap.getZoom();
-    if (!rawCuadricula || z < 14) return;
-
+    
+    if (!mymap.hasLayer(cuadriculaLayer) || !rawCuadricula || z < 10) return;
     const bounds = mymap.getBounds();
 
     rawCuadricula.features.forEach(f => {
+        const mB = L.geoJSON(f).getBounds();
+        if (!bounds.intersects(mB)) return;
+
+        const macroCode = f.properties.codigo;
         const coords = f.geometry.coordinates[0];
-        const macroBounds = L.geoJSON(f).getBounds();
-        if (!bounds.intersects(macroBounds)) return;
 
-        // Dibujamos la rejilla micro (24x24) usando líneas exactas
-        for (let i = 0; i <= 24; i++) {
-            // Líneas Verticales interpoladas
-            let vLine = [];
-            for(let j=0; j<=24; j++) vLine.push(getPointInGrid(coords, i, j, 24, 24));
-            L.polyline(vLine, {color: '#3498db', weight: 0.5, interactive: false}).addTo(gridLayer);
-
-            // Líneas Horizontales interpoladas
-            let hLine = [];
-            for(let j=0; j<=24; j++) hLine.push(getPointInGrid(coords, j, i, 24, 24));
-            L.polyline(hLine, {color: '#3498db', weight: 0.5, interactive: false}).addTo(gridLayer);
+        // ETIQUETAS MACRO
+        if (z >= 10 && z < 14 && labelsEnabled) {
+            L.marker(mB.getCenter(), {
+                pane: 'watermarkPane',
+                icon: L.divIcon({ className: 'watermark-label-fixed label-macro', html: macroCode, iconSize: [60, 20] }),
+                interactive: false
+            }).addTo(labelLayer);
         }
 
-        // Etiquetas Micro
-        if (labelsEnabled && z >= 14 && z < 18) {
-            for (let i = 0; i < 24; i++) {
-                for (let j = 0; j < 24; j++) {
-                    const center = getPointInGrid(coords, i + 0.5, j + 0.5, 24, 24);
-                    if (bounds.contains(center)) {
-                        const microC = `${ALFABETO[i]}${ALFABETO[j]}${i % 10}${j % 10}${Math.floor((i + j) / 5)}`;
-                        L.marker(center, {
-                            icon: L.divIcon({ 
-                                className: 'watermark-label-fixed label-micro', 
-                                html: `<div>${f.properties.codigo}</div><div>${microC}</div>`, 
-                                iconSize: [40, 20] 
-                            }),
-                            interactive: false
-                        }).addTo(labelLayer);
+        // REJILLA MICRO (LÍNEAS)
+        if (z >= 14) {
+            for (let i = 0; i <= 24; i++) {
+                // Verticales
+                let vLine = [];
+                for(let j=0; j<=24; j++) vLine.push(getPointInGrid(coords, i, j, 24, 24));
+                L.polyline(vLine, {color: (z >= 18 ? '#1a73e8' : '#3498db'), weight: 0.6, interactive: false}).addTo(gridLayer);
+
+                // Horizontales
+                let hLine = [];
+                for(let j=0; j<=24; j++) hLine.push(getPointInGrid(coords, j, i, 24, 24));
+                L.polyline(hLine, {color: (z >= 18 ? '#1a73e8' : '#3498db'), weight: 0.6, interactive: false}).addTo(gridLayer);
+            }
+
+            // Etiquetas Micro
+            if (labelsEnabled && z < 18) {
+                for (let i = 0; i < 24; i++) {
+                    for (let j = 0; j < 24; j++) {
+                        const center = getPointInGrid(coords, i + 0.5, j + 0.5, 24, 24);
+                        if (bounds.contains(center)) {
+                            const microC = `${ALFABETO[i]}${ALFABETO[j]}${i % 10}${j % 10}${Math.floor((i + j) / 5)}`;
+                            L.marker(center, {
+                                pane: 'watermarkPane',
+                                icon: L.divIcon({ 
+                                    className: 'watermark-label-fixed label-micro', 
+                                    html: `<div>${macroCode}</div><div>${microC}</div>`, 
+                                    iconSize: [50, 25] 
+                                }),
+                                interactive: false
+                            }).addTo(labelLayer);
+                        }
                     }
+                }
+            }
+            
+            // REJILLA NANO (Solo en zoom muy alto)
+            if (z >= 18) {
+                for (let i = 0; i <= 240; i++) {
+                    if (i % 10 === 0) continue; // Saltamos las que ya dibujó el Micro
+                    // Aquí podrías optimizar dibujando solo lo visible, pero para precisión:
+                    // (Omitido por rendimiento a menos que sea necesario)
                 }
             }
         }
     });
 }
 
-$.getJSON("cuadricula.geojson", d => { 
-    rawCuadricula = d; 
-    L.geoJSON(d, {style: {color: "#2c3e50", weight: 1, fillOpacity: 0.05}}).addTo(cuadriculaLayer);
-    updateGridAndLabels(); 
-});
+// --- EVENTOS Y CAPAS ---
 
-mymap.on('moveend zoomend', updateGridAndLabels);
 $('#toggle-wm').click(function() {
     labelsEnabled = !labelsEnabled;
-    $(this).text(labelsEnabled ? "TEXTO: ON" : "TEXTO: OFF");
+    $(this).toggleClass('off').text(labelsEnabled ? "TEXTO: ON" : "TEXTO: OFF");
     updateGridAndLabels();
 });
 
-// Click para obtener código
+mymap.on('overlayadd overlayremove moveend zoomend', updateGridAndLabels);
+
+$.getJSON("estafetas.geojson", d => { rawZonas = d; L.geoJSON(d, {style:{color:"#000", weight:1.5, fillOpacity:0.1, fillColor:"#888"}}).addTo(zonasGeoLayer); });
+$.getJSON("cuadricula.geojson", d => { rawCuadricula = d; L.geoJSON(d, {style:{color:"#2c3e50", weight:1, fillOpacity:0.05}}).addTo(cuadriculaLayer); updateGridAndLabels(); });
+$.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style:{color:"#e74c3c", weight:2}}).addTo(rutasLayer));
+$.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:6, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasPointsLayer));
+
 mymap.on("click", function (e) {
     selectionLayer.clearLayers();
-    const found = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], cuadriculaLayer);
-    if (found.length > 0) {
-        const feat = found[0].feature;
-        const coords = feat.geometry.coordinates[0];
-        
-        // Calcular en qué celda cayó el click (usando proximidad)
-        // Por simplicidad en este ejemplo, usamos una aproximación lineal:
-        // (En un entorno real, aquí se usaría una matriz de transformación)
-        
-        const popupContent = `<b>Código: ${feat.properties.codigo}</b><br>
-                              Lat: ${e.latlng.lat.toFixed(6)}<br>
-                              Lon: ${e.latlng.lng.toFixed(6)}<br>
-                              <button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${e.latlng.lat},${e.latlng.lng}')">MAPS</button>`;
-        
-        L.popup().setLatLng(e.latlng).setContent(popupContent).openOn(mymap);
+    if (!rawCuadricula) return;
+
+    const hC = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], cuadriculaLayer);
+    if (hC.length === 0) return;
+
+    const hZ = rawZonas ? leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawZonas)) : [];
+    const useZonas = mymap.hasLayer(zonasGeoLayer) && hZ.length > 0;
+    
+    const macroID = useZonas ? hZ[0].feature.properties.VM_LEVEL : hC[0].feature.properties.codigo;
+    const data = getHierarchicalData(e.latlng.lat, e.latlng.lng, hC[0].feature);
+    
+    let titulo = "ZONAS POSTALES", finalCode = macroID;
+    const z = mymap.getZoom();
+
+    if (z < 14) {
+        L.geoJSON(useZonas ? hZ[0].feature : hC[0].feature, {style:{color:"#1a73e8", weight:4, fillOpacity:0.3}}).addTo(selectionLayer);
+    } else if (z >= 14 && z < 17) {
+        titulo = "ÁREA POSTAL";
+        finalCode += `-${data.micro}`;
+        L.polygon(data.mPoly, {color:"#1a73e8", weight:4, fillOpacity:0.2}).addTo(selectionLayer);
+    } else {
+        titulo = "CÓDIGO POSTAL";
+        finalCode += `-${data.micro}-${data.nano}`;
+        L.polygon(data.nPoly, {color:"#e67e22", weight:5, fillOpacity:0.4}).addTo(selectionLayer);
+    }
+
+    const ws = encodeURIComponent(`📍 Mi ubicación: ${finalCode}\nGPS: ${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`);
+    L.popup({offset:[0,-55]}).setLatLng(e.latlng).setContent(`<div style="text-align:center;"><small>${titulo}</small><br><b>${finalCode}</b><br><button class="btn-nav" onclick="window.open('https://www.google.com/maps/search/?api=1&query=${e.latlng.lat},${e.latlng.lng}')">📍 MAPS</button><button class="btn-ws" onclick="window.open('https://wa.me/?text=${ws}')">💬 WS</button></div>`).openOn(mymap);
+});
+
+document.getElementById('search-btn').addEventListener('click', () => {
+    const code = document.getElementById('search-input').value.trim().toUpperCase();
+    if (!code || !rawCuadricula) return;
+    let f = rawCuadricula.features.find(feat => feat.properties.codigo === code.split('-')[0]);
+    if (f) mymap.fitBounds(L.geoJSON(f).getBounds());
+});
+
+mymap.on('locationfound', e => {
+    userLocationLayer.clearLayers();
+    L.circleMarker(e.latlng, { radius: 7, color: 'white', fillColor: '#3498db', fillOpacity: 1, weight: 2 }).addTo(userLocationLayer);
+});
+
+const LocateControl = L.Control.extend({
+    options: { position: 'topleft' },
+    onAdd: function() {
+        const c = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+        const b = L.DomUtil.create('a', 'locate-button', c);
+        b.innerHTML = '🎯';
+        L.DomEvent.on(b, 'click', e => { L.DomEvent.stopPropagation(e); mymap.locate({setView:true, maxZoom:17}); });
+        return c;
     }
 });
+mymap.addControl(new LocateControl());
+
+L.control.layers(null, {
+    "Zonas": zonasGeoLayer,
+    "Cuadrícula": cuadriculaLayer,
+    "Rutas": rutasLayer,
+    "Estafetas": estafetasPointsLayer,
+    "Rejilla": gridLayer
+}, {collapsed: false}).addTo(mymap);
 </script>
 </body>
 </html>
