@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
     <style>
-        body, html, #mapid { width: 100%; height: 100%; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body, html, #mapid { width: 100%; height: 100%; margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
         .leaflet-popup { margin-bottom: 70px !important; }
         .map-title { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 4000; text-align: center; pointer-events: none; width: 90%; }
         .map-title h1 { margin: 0; font-size: 18px; color: #2c3e50; font-weight: bold; text-shadow: 0 0 5px white; }
@@ -26,7 +26,7 @@
             text-align: center; pointer-events: none !important; line-height: 1.1;
             text-shadow: 1px 1px 1px white;
         }
-        .label-micro { font-size: 11px !important; }
+        .label-micro { font-size: 10px !important; }
         .label-macro { font-size: 14px !important; font-weight: 600 !important; }
         
         .btn-nav, .btn-ws { display: inline-block; margin-top: 8px; padding: 8px 12px; color: white !important; text-decoration: none !important; border-radius: 5px; font-weight: bold; font-size: 11px; border:none; cursor:pointer; }
@@ -93,16 +93,17 @@ function updateGridAndLabels() {
     labelLayer.clearLayers();
     const z = mymap.getZoom();
     
-    if (!mymap.hasLayer(cuadriculaLayer) || !rawCuadricula || z < 10) return;
+    // CORRECCIÓN: Ahora solo depende de si existe la data, no de si cuadriculaLayer está activa
+    if (!rawCuadricula || z < 10) return;
 
     const bounds = mymap.getBounds();
     rawCuadricula.features.forEach(f => {
         const mB = L.geoJSON(f).getBounds();
         if (!bounds.intersects(mB)) return;
-
         const macroCode = f.properties.codigo;
 
-        if (z >= 10 && z < 14 && labelsEnabled) {
+        // ETIQUETAS MACRO
+        if (z >= 10 && z < 14 && labelsEnabled && mymap.hasLayer(cuadriculaLayer)) {
             L.marker(mB.getCenter(), {
                 pane: 'watermarkPane',
                 icon: L.divIcon({ className: 'watermark-label-fixed label-macro', html: macroCode, iconSize: [60, 20] }),
@@ -110,28 +111,26 @@ function updateGridAndLabels() {
             }).addTo(labelLayer);
         }
 
-        if (z >= 14) {
+        // NIVEL MICRO (Solo si "Rejilla Dinámica" está activa)
+        if (z >= 14 && mymap.hasLayer(gridLayer)) {
             const sX = (mB.getEast() - mB.getWest()) / 24, sY = (mB.getNorth() - mB.getSouth()) / 24;
-            
-            // AJUSTE DINÁMICO DE GROSOR: A menor zoom, líneas más finas para evitar traslape visual
-            let microWeight = z >= 17 ? 1.2 : 0.3;
-            let microOpacity = z >= 17 ? 0.8 : 0.4;
+            const gap = 0.02; // PADDING PARA EVITAR TRASLAPE
 
             for (let i = 0; i < 24; i++) {
                 for (let j = 0; j < 24; j++) {
                     let s = mB.getSouth() + (j * sY), w = mB.getWest() + (i * sX);
-                    let rectB = L.latLngBounds([s, w], [s + sY, w + sX]);
+                    let n = s + sY, e = w + sX;
+                    
+                    // Aplicar margen interno para que las líneas no choquen
+                    let rectB = L.latLngBounds([s + (sY*gap), w + (sX*gap)], [n - (sY*gap), e - (sX*gap)]);
+                    
                     if (bounds.intersects(rectB)) {
-                        
+                        let weight = (z >= 18) ? 1.5 : 0.6;
                         L.rectangle(rectB, { 
-                            color: "#1a73e8", 
-                            weight: microWeight, 
-                            opacity: microOpacity,
-                            fillOpacity: 0.01, 
-                            interactive: false 
+                            color: "#1a73e8", weight: weight, opacity: 0.5, fillOpacity: 0.01, interactive: false 
                         }).addTo(gridLayer);
                         
-                        if (labelsEnabled && z >= 14 && z < 18) {
+                        if (labelsEnabled && z >= 14 && z < 18 && mymap.hasLayer(cuadriculaLayer)) {
                             const microC = `${ALFABETO[i]}${ALFABETO[j]}${i % 10}${j % 10}${Math.floor((i + j) / 5)}`;
                             L.marker(rectB.getCenter(), {
                                 pane: 'watermarkPane',
@@ -148,9 +147,12 @@ function updateGridAndLabels() {
             }
         }
 
-        if (z >= 18) {
+        // NIVEL NANO
+        if (z >= 18 && mymap.hasLayer(gridLayer)) {
             const sX = (mB.getEast() - mB.getWest()) / 24, sY = (mB.getNorth() - mB.getSouth()) / 24;
             const nsX = sX / 10, nsY = sY / 10;
+            const gap = 0.05;
+
             if (mB.contains(mymap.getCenter())) {
                 for (let i = 0; i < 24; i++) {
                     for (let j = 0; j < 24; j++) {
@@ -159,15 +161,10 @@ function updateGridAndLabels() {
                             for (let ni = 0; ni < 10; ni++) {
                                 for (let nj = 0; nj < 10; nj++) {
                                     let ns = mS + (nj * nsY), nw = mW + (ni * nsX);
-                                    let nRectB = L.latLngBounds([ns, nw], [ns + nsY, nw + nsX]);
+                                    let nn = ns + nsY, ne = nw + nsX;
+                                    let nRectB = L.latLngBounds([ns + (nsY*gap), nw + (nsX*gap)], [nn - (nsY*gap), ne - (nsX*gap)]);
                                     if (bounds.contains(nRectB.getCenter())) {
-                                        L.rectangle(nRectB, { 
-                                            color: "#e67e22", 
-                                            weight: 0.3, 
-                                            opacity: 0.6,
-                                            fillOpacity: 0.05, 
-                                            interactive: false 
-                                        }).addTo(gridLayer);
+                                        L.rectangle(nRectB, { color: "#e67e22", weight: 0.4, opacity: 0.6, fillOpacity: 0.05, interactive: false }).addTo(gridLayer);
                                     }
                                 }
                             }
@@ -185,6 +182,7 @@ $('#toggle-wm').click(function() {
     updateGridAndLabels();
 });
 
+// ESCUCHA CAMBIOS EN EL SELECTOR PARA RE-DIBUJAR
 mymap.on('overlayadd overlayremove', updateGridAndLabels);
 mymap.on('moveend zoomend', updateGridAndLabels);
 
@@ -207,7 +205,6 @@ mymap.on("click", function (e) {
     const useZonas = mymap.hasLayer(zonasGeoLayer) && hZ.length > 0;
     const macroID = useZonas ? hZ[0].feature.properties.VM_LEVEL : hC[0].feature.properties.codigo;
     const data = getHierarchicalData(e.latlng.lat, e.latlng.lng, hC[0].feature);
-    
     let titulo = "ZONAS POSTALES", finalCode = macroID;
     const z = mymap.getZoom();
 
