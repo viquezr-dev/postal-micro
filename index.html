@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SISTEMA POSTAL DE PANAMÁ</title>
+    <title>SISTEMA POSTAL DE PANAMÁ - PRECISIÓN CORREGIDA</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
@@ -39,23 +39,21 @@
 const mymap = L.map('mapid').setView([8.50, -80.0], 8);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mymap);
 
-// Capas
-const gridLayer = L.layerGroup().addTo(mymap); // Rejilla dinámica
-const labelLayer = L.layerGroup().addTo(mymap);
-const selectionLayer = L.layerGroup().addTo(mymap);
+// Capas organizadas
 const zonasGeoLayer = L.layerGroup().addTo(mymap);
+const cuadriculaFisicaLayer = L.layerGroup().addTo(mymap);
+const gridLayer = L.layerGroup().addTo(mymap);
+const labelLayer = L.layerGroup().addTo(mymap);
+const selectionLayer = L.layerGroup().addTo(mymap); // Sombreado siempre visible
 const rutasLayer = L.layerGroup().addTo(mymap);
 const estafetasPointsLayer = L.layerGroup().addTo(mymap);
 const userLocationLayer = L.layerGroup().addTo(mymap);
-// NUEVA: Capa para el archivo GeoJSON
-const cuadriculaFisicaLayer = L.layerGroup().addTo(mymap);
 
 let rawCuadricula = null, rawZonas = null;
 let labelsEnabled = true;
 const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const NANO_RES = 25; 
 
-// Función de rejilla
 function getPointInGrid(coords, col, row, totalCols, totalRows) {
     const p0 = coords[0], p1 = coords[1], p2 = coords[2], p3 = coords[3];
     const tX = col / totalCols, tY = row / totalRows;
@@ -67,10 +65,14 @@ function getPointInGrid(coords, col, row, totalCols, totalRows) {
 function getHierarchicalData(lat, lng, feature) {
     const b = L.geoJSON(feature).getBounds();
     const coords = feature.geometry.coordinates[0];
+    
+    // Normalización de coordenadas para evitar el desfase de "tocar uno y sombrear otro"
     const pctX = (lng - b.getWest()) / (b.getEast() - b.getWest());
     const pctY = (lat - b.getSouth()) / (b.getNorth() - b.getSouth());
+
     const ix = Math.max(0, Math.min(23, Math.floor(pctX * 24)));
     const iy = Math.max(0, Math.min(23, Math.floor(pctY * 24)));
+    
     const micro = `${ALFABETO[ix]}${ALFABETO[iy]}${ix % 10}${iy % 10}${Math.floor((ix + iy) / 5)}`;
     
     const mRect = [
@@ -80,8 +82,8 @@ function getHierarchicalData(lat, lng, feature) {
         getPointInGrid(coords, ix, iy+1, 24, 24)
     ];
 
-    const nix = Math.max(0, Math.min(NANO_RES-1, Math.floor((pctX * 24 - ix) * NANO_RES)));
-    const niy = Math.max(0, Math.min(NANO_RES-1, Math.floor((pctY * 24 - iy) * NANO_RES)));
+    const nix = Math.max(0, Math.min(NANO_RES-1, Math.floor(((pctX * 24) - ix) * NANO_RES)));
+    const niy = Math.max(0, Math.min(NANO_RES-1, Math.floor(((pctY * 24) - iy) * NANO_RES)));
     const nano = `${ALFABETO[nix % 24]}${niy % 10}`;
 
     const nRect = [
@@ -90,26 +92,28 @@ function getHierarchicalData(lat, lng, feature) {
         getPointInGrid(coords, ix + (nix+1)/NANO_RES, iy + (niy+1)/NANO_RES, 24, 24),
         getPointInGrid(coords, ix + nix/NANO_RES, iy + (niy+1)/NANO_RES, 24, 24)
     ];
+
     return { micro, nano, mRect, nRect };
 }
 
 function updateGridAndLabels() {
     gridLayer.clearLayers();
     labelLayer.clearLayers();
-    if (!rawCuadricula || mymap.getZoom() < 10) return;
-
+    if (!rawCuadricula) return;
+    const z = mymap.getZoom();
     const bounds = mymap.getBounds();
+
     rawCuadricula.features.forEach(f => {
-        const poly = L.geoJSON(f);
-        if (!bounds.intersects(poly.getBounds())) return;
+        const fBounds = L.geoJSON(f).getBounds();
+        if (!bounds.intersects(fBounds)) return;
         
-        if (mymap.getZoom() < 14 && labelsEnabled) {
-            L.marker(poly.getBounds().getCenter(), {
+        if (z >= 10 && z < 14 && labelsEnabled) {
+            L.marker(fBounds.getCenter(), {
                 icon: L.divIcon({ className: 'watermark-label-fixed', html: f.properties.codigo, iconSize: [60, 20] })
             }).addTo(labelLayer);
         }
 
-        if (mymap.getZoom() >= 14 && mymap.hasLayer(gridLayer)) {
+        if (z >= 14 && mymap.hasLayer(gridLayer)) {
             const coords = f.geometry.coordinates[0];
             for (let i = 0; i <= 24; i++) {
                 let v = [], h = [];
@@ -124,7 +128,7 @@ function updateGridAndLabels() {
     });
 }
 
-// CARGA DE DATOS
+// Carga de Datos
 $.getJSON("cuadricula.geojson", d => { 
     rawCuadricula = d; 
     L.geoJSON(d, {style: {color: "#3498db", weight: 1, fillOpacity: 0.05}}).addTo(cuadriculaFisicaLayer);
@@ -137,7 +141,7 @@ $.getJSON("estafetas.geojson", d => {
 $.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style: {color: "#e74c3c", weight: 2}}).addTo(rutasLayer));
 $.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:5, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasPointsLayer));
 
-// CLIC ORIGINAL RESTAURADO
+// EVENTO CLIC RE-CALIBRADO
 mymap.on("click", function (e) {
     selectionLayer.clearLayers();
     if (!rawCuadricula || !rawZonas) return;
@@ -159,15 +163,15 @@ mymap.on("click", function (e) {
     } else if (z >= 14 && z < 17) {
         titulo = "ÁREA POSTAL";
         finalCode += `-${data.micro}`;
-        L.polygon(data.mRect, {color:"#1a73e8", weight:4, fillOpacity:0.2}).addTo(selectionLayer);
+        L.polygon(data.mRect, {color:"#1a73e8", weight:3, fillOpacity:0.4}).addTo(selectionLayer);
     } else {
         titulo = "CÓDIGO POSTAL";
         finalCode += `-${data.micro}-${data.nano}`;
-        L.polygon(data.nRect, {color:"#e67e22", weight:5, fillOpacity:0.4}).addTo(selectionLayer);
+        L.polygon(data.nRect, {color:"#e67e22", weight:4, fillOpacity:0.5}).addTo(selectionLayer);
     }
 
     const ws = encodeURIComponent(`📍 Mi ubicación: ${finalCode}\nGPS: ${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`);
-    L.popup({offset:[0,-10]}).setLatLng(e.latlng).setContent(`
+    L.popup({offset:[0,-5]}).setLatLng(e.latlng).setContent(`
         <div style="text-align:center;">
             <small>${titulo}</small><br>
             <b>${finalCode}</b><br>
@@ -198,14 +202,13 @@ const LocateControl = L.Control.extend({
 });
 mymap.addControl(new LocateControl());
 
-// CONTROL DE CAPAS RESTAURADO
+// CONTROL DE CAPAS
 L.control.layers(null, {
     "Zonas": zonasGeoLayer,
-    "Cuadrícula Macro": cuadriculaFisicaLayer,
+    "Cuadrícula": cuadriculaFisicaLayer,
     "Rutas": rutasLayer,
     "Estafetas": estafetasPointsLayer,
-    "Rejilla Dinámica": gridLayer,
-    
+    "Código postal": gridLayer
 }, {collapsed: false}).addTo(mymap);
 
 $('#toggle-wm').click(function() {
@@ -218,4 +221,3 @@ mymap.on('moveend zoomend', updateGridAndLabels);
 </script>
 </body>
 </html>
-
