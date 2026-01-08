@@ -69,15 +69,15 @@ const NANO_SIZE  = MICRO_SIZE / NANO_DIV;           // 41.66667 m
 ========================= */
 function updateNanoGrid(){
     gridLayer.clearLayers();
-    labelLayer.clearLayers();
 
     if (!rawCuadricula) return;
     const z = map.getZoom();
     if (z < 17) return;
 
     const bounds = map.getBounds();
-    const pSW = map.project(bounds.getSouthWest(), map.getMaxZoom());
-    const pNE = map.project(bounds.getNorthEast(), map.getMaxZoom());
+
+    const pSW = L.CRS.EPSG3857.project(bounds.getSouthWest());
+    const pNE = L.CRS.EPSG3857.project(bounds.getNorthEast());
 
     const minX = Math.floor((pSW.x - ORIGIN) / NANO_SIZE);
     const maxX = Math.floor((pNE.x - ORIGIN) / NANO_SIZE);
@@ -94,8 +94,8 @@ function updateNanoGrid(){
                 const x0 = ORIGIN + x * NANO_SIZE;
                 const y0 = ORIGIN + y * NANO_SIZE;
 
-                const llSW = map.unproject(L.point(x0, y0), map.getMaxZoom());
-                const llNE = map.unproject(L.point(x0 + NANO_SIZE, y0 + NANO_SIZE), map.getMaxZoom());
+                const llSW = L.CRS.EPSG3857.unproject(L.point(x0, y0));
+                const llNE = L.CRS.EPSG3857.unproject(L.point(x0 + NANO_SIZE, y0 + NANO_SIZE));
 
                 const nanoBounds = L.latLngBounds(llSW, llNE);
                 if (!macroBounds.intersects(nanoBounds)) continue;
@@ -111,6 +111,7 @@ function updateNanoGrid(){
         }
     });
 }
+
 
 /* =========================
    CLICK (FUNCIONAL)
@@ -184,3 +185,4 @@ L.control.layers(null,{
 </script>
 </body>
 </html>
+
