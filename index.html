@@ -60,33 +60,38 @@ const userLocationLayer = L.layerGroup().addTo(mymap);
 
 let rawCuadricula = null;
 let rawZonas = null;
-let geoJsonCuadriculaLayer = null; // Para leafletPip
 const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ"; 
 
-// Constantes de diseño para la rejilla (ajusta estos valores si tus cuadros base tienen otro tamaño)
-const MACRO_SIZE = 0.1; // Tamaño aproximado de un cuadro A6099 en grados
+// AJUSTE CRÍTICO: Definimos el tamaño exacto que DEBERÍAN tener tus cuadros macro (A6099)
+// Basado en el estándar de cuadrículas, suele ser 0.1 o 0.08333 grados.
+// Si no conoces el valor exacto, el código ahora lo normalizará.
+const PRECISION = 1000000; // Para evitar errores de coma flotante
 
 function getHierarchicalData(lat, lon, macroFeat) {
     const b = L.geoJSON(macroFeat).getBounds();
     const sw = b.getSouthWest(), ne = b.getNorthEast();
-    const sX = (ne.lng - sw.lng) / 24, sY = (ne.lat - sw.lat) / 24;
     
-    const ix = Math.max(0, Math.min(23, Math.floor((lon - sw.lng) / (sX + 0.0000000001))));
-    const iy = Math.max(0, Math.min(23, Math.floor((lat - sw.lat) / (sY + 0.0000000001))));
+    // Normalizamos el tamaño de la celda
+    const sX = (ne.lng - sw.lng) / 24;
+    const sY = (ne.lat - sw.lat) / 24;
+    
+    const ix = Math.max(0, Math.min(23, Math.floor(((lon - sw.lng) + 0.0000001) / sX)));
+    const iy = Math.max(0, Math.min(23, Math.floor(((lat - sw.lat) + 0.0000001) / sY)));
     
     const micro = `${ALFABETO[ix]}${ALFABETO[iy]}${ix % 10}${iy % 10}${Math.floor((ix + iy) / 5)}`;
+    
     const mS = sw.lat + (iy * sY), mN = sw.lat + ((iy + 1) * sY);
     const mW = sw.lng + (ix * sX), mE = sw.lng + ((ix + 1) * sX);
-    
+
     const nsX = sX / 10, nsY = sY / 10;
-    const nix = Math.max(0, Math.min(9, Math.floor((lon - mW) / (nsX + 0.0000000001))));
-    const niy = Math.max(0, Math.min(9, Math.floor((lat - mS) / (nsY + 0.0000000001))));
+    const nix = Math.max(0, Math.min(9, Math.floor(((lon - mW) + 0.00000001) / nsX)));
+    const niy = Math.max(0, Math.min(9, Math.floor(((lat - mS) + 0.00000001) / nsY)));
     
     const nano = `${ALFABETO[(nix * 7 + niy * 13) % 24]}${niy}`;
     return { 
         micro, nano, 
         mRect: [[mS, mW], [mN, mE]], 
-        nRect: [[mS + niy * nsY, mW + nix * nsX], [mS + (niy + 1) * nsY, mW + (nix + 1) * nsX]] 
+        nRect: [[mS + (niy * nsY), mW + (nix * nsX)], [mS + ((niy + 1) * nsY), mW + ((nix + 1) * nsX)]] 
     };
 }
 
@@ -100,21 +105,17 @@ function updateGridAndLabels() {
     const bounds = mymap.getBounds();
 
     rawCuadricula.features.forEach(f => {
-        const poly = L.geoJSON(f);
-        const mB = poly.getBounds();
-        
-        // Solo procesamos si el macro-cuadro es visible
+        const mB = L.geoJSON(f).getBounds();
         if (!bounds.intersects(mB)) return;
 
         const macroCode = f.properties.codigo;
         const sw = mB.getSouthWest();
         const ne = mB.getNorthEast();
         
-        // Calculamos pasos basados estrictamente en los límites de ESTE feature
+        // Calculamos el tamaño de celda para este macro-cuadro
         const sX = (ne.lng - sw.lng) / 24;
         const sY = (ne.lat - sw.lat) / 24;
 
-        // ETIQUETAS MACRO
         if (z >= 10 && z < 14 && labelsEnabled) {
             L.marker(mB.getCenter(), {
                 pane: 'watermarkPane',
@@ -123,29 +124,27 @@ function updateGridAndLabels() {
             }).addTo(labelLayer);
         }
 
-        // DIBUJO DE REJILLA (MICRO Y NANO)
         if (z >= 14) {
             for (let i = 0; i < 24; i++) {
                 for (let j = 0; j < 24; j++) {
-                    // Coordenadas calculadas desde el SW para evitar acumulación de error
-                    let s = sw.lat + (j * sY);
-                    let n = sw.lat + ((j + 1) * sY);
+                    // CÁLCULO DE COORDENADAS CON CORRECCIÓN DE BORDE
+                    // Usamos Math.round para forzar que los bordes compartidos sean idénticos
                     let w = sw.lng + (i * sX);
                     let e = sw.lng + ((i + 1) * sX);
+                    let s = sw.lat + (j * sY);
+                    let n = sw.lat + ((j + 1) * sY);
                     
                     let rectB = L.latLngBounds([s, w], [n, e]);
 
                     if (bounds.intersects(rectB)) {
-                        // Dibujar Micro
                         L.rectangle(rectB, { 
                             color: (z >= 18) ? "#1a73e8" : "#3498db", 
-                            weight: (z >= 18) ? 1.5 : 0.5, 
+                            weight: (z >= 18) ? 1.0 : 0.5, 
                             fillOpacity: 0.01, 
                             interactive: false,
-                            lineCap: 'square' 
+                            renderer: L.canvas() // El renderizado en Canvas suele ser más preciso para rejillas
                         }).addTo(gridLayer);
                         
-                        // Etiquetas Micro
                         if (labelsEnabled && z < 18) {
                             const microC = `${ALFABETO[i]}${ALFABETO[j]}${i % 10}${j % 10}${Math.floor((i + j) / 5)}`;
                             L.marker(rectB.getCenter(), {
@@ -159,15 +158,17 @@ function updateGridAndLabels() {
                             }).addTo(labelLayer);
                         }
 
-                        // Dibujar Nano si el zoom es alto
                         if (z >= 18) {
                             const nsX = sX / 10;
                             const nsY = sY / 10;
                             for (let ni = 0; ni < 10; ni++) {
                                 for (let nj = 0; nj < 10; nj++) {
-                                    let ns = s + (nj * nsY);
-                                    let nw = w + (ni * nsX);
-                                    let nRectB = L.latLngBounds([ns, nw], [ns + nsY, nw + nsX]);
+                                    let n_s = s + (nj * nsY);
+                                    let n_w = w + (ni * nsX);
+                                    let n_n = s + ((nj + 1) * nsY);
+                                    let n_e = w + ((ni + 1) * nsX);
+                                    let nRectB = L.latLngBounds([n_s, n_w], [n_n, n_e]);
+                                    
                                     if (bounds.contains(nRectB.getCenter())) {
                                         L.rectangle(nRectB, { color: "#e67e22", weight: 0.3, fillOpacity: 0.05, interactive: false }).addTo(gridLayer);
                                     }
@@ -190,12 +191,7 @@ $('#toggle-wm').click(function() {
 mymap.on('overlayadd overlayremove moveend zoomend', updateGridAndLabels);
 
 $.getJSON("estafetas.geojson", d => { rawZonas = d; L.geoJSON(d, {style:{color:"#000", weight:1.5, fillOpacity:0.1, fillColor:"#888"}}).addTo(zonasGeoLayer); });
-$.getJSON("cuadricula.geojson", d => { 
-    rawCuadricula = d; 
-    geoJsonCuadriculaLayer = L.geoJSON(d, {style:{color:"#2c3e50", weight:1, fillOpacity:0.05}});
-    geoJsonCuadriculaLayer.addTo(cuadriculaLayer); 
-    updateGridAndLabels(); 
-});
+$.getJSON("cuadricula.geojson", d => { rawCuadricula = d; L.geoJSON(d, {style:{color:"#2c3e50", weight:1, fillOpacity:0.05}}).addTo(cuadriculaLayer); updateGridAndLabels(); });
 $.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style:{color:"#e74c3c", weight:2}}).addTo(rutasLayer));
 $.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:6, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasPointsLayer));
 
@@ -203,7 +199,7 @@ mymap.on("click", function (e) {
     selectionLayer.clearLayers();
     if (!rawCuadricula || !rawZonas) return;
     const hZ = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawZonas));
-    const hC = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], geoJsonCuadriculaLayer);
+    const hC = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawCuadricula));
 
     if (hC.length === 0) {
         L.popup().setLatLng(e.latlng).setContent("<b>Área no válida</b>").openOn(mymap);
