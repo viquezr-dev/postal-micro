@@ -10,25 +10,15 @@
         .leaflet-popup { margin-bottom: 70px !important; }
         .map-title { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 4000; text-align: center; pointer-events: none; width: 90%; }
         .map-title h1 { margin: 0; font-size: 18px; color: #2c3e50; font-weight: bold; text-shadow: 0 0 5px white; }
-        
         .search-container { position: absolute; top: 15px; right: 10px; z-index: 5000; display: flex; background: white; padding: 5px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); width: 280px; }
         input#search-input { flex: 1; border: none; padding: 8px; font-size: 14px; outline: none; }
         button#search-btn { background: #2c3e50; color: white; border: none; padding: 8px 12px; border-radius: 5px; cursor: pointer; font-weight: bold; }
-
         .leaflet-top.leaflet-right { top: 100px !important; }
-
         .toggle-watermark { position: absolute; bottom: 30px; left: 10px; z-index: 5000; background: white; padding: 10px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.3); cursor: pointer; font-weight: bold; font-size: 11px; border: 1px solid #1a73e8; color: #1a73e8; }
         .toggle-watermark.off { color: #666; border-color: #ccc; }
-
-        .watermark-label-fixed {
-            background: none !important; border: none !important; box-shadow: none !important;
-            color: #1a73e8 !important; font-weight: 400 !important;
-            text-align: center; pointer-events: none !important; line-height: 1.1;
-            text-shadow: 1px 1px 1px white;
-        }
+        .watermark-label-fixed { background: none !important; border: none !important; box-shadow: none !important; color: #1a73e8 !important; font-weight: 400 !important; text-align: center; pointer-events: none !important; line-height: 1.1; text-shadow: 1px 1px 1px white; }
         .label-micro { font-size: 11px !important; }
         .label-macro { font-size: 14px !important; font-weight: 600 !important; }
-        
         .btn-nav, .btn-ws { display: inline-block; margin-top: 8px; padding: 8px 12px; color: white !important; text-decoration: none !important; border-radius: 5px; font-weight: bold; font-size: 11px; border:none; cursor:pointer; }
         .btn-nav { background-color: #3498db; margin-right: 5px; }
         .btn-ws { background-color: #25D366; }
@@ -70,32 +60,34 @@ const userLocationLayer = L.layerGroup().addTo(mymap);
 
 let rawCuadricula = null;
 let rawZonas = null;
+let geoJsonCuadriculaLayer = null; // Para leafletPip
 const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ"; 
+
+// Constantes de diseño para la rejilla (ajusta estos valores si tus cuadros base tienen otro tamaño)
+const MACRO_SIZE = 0.1; // Tamaño aproximado de un cuadro A6099 en grados
 
 function getHierarchicalData(lat, lon, macroFeat) {
     const b = L.geoJSON(macroFeat).getBounds();
     const sw = b.getSouthWest(), ne = b.getNorthEast();
     const sX = (ne.lng - sw.lng) / 24, sY = (ne.lat - sw.lat) / 24;
     
-    // Usamos un pequeño margen para evitar errores de punto flotante en los bordes
     const ix = Math.max(0, Math.min(23, Math.floor((lon - sw.lng) / (sX + 0.0000000001))));
     const iy = Math.max(0, Math.min(23, Math.floor((lat - sw.lat) / (sY + 0.0000000001))));
     
     const micro = `${ALFABETO[ix]}${ALFABETO[iy]}${ix % 10}${iy % 10}${Math.floor((ix + iy) / 5)}`;
-    
-    // Calculamos rectangulos Micro con coordenadas absolutas desde el origen SW
     const mS = sw.lat + (iy * sY), mN = sw.lat + ((iy + 1) * sY);
     const mW = sw.lng + (ix * sX), mE = sw.lng + ((ix + 1) * sX);
-    const mRect = [[mS, mW], [mN, mE]];
-
+    
     const nsX = sX / 10, nsY = sY / 10;
     const nix = Math.max(0, Math.min(9, Math.floor((lon - mW) / (nsX + 0.0000000001))));
     const niy = Math.max(0, Math.min(9, Math.floor((lat - mS) / (nsY + 0.0000000001))));
     
     const nano = `${ALFABETO[(nix * 7 + niy * 13) % 24]}${niy}`;
-    const nRect = [[mS + niy * nsY, mW + nix * nsX], [mS + (niy + 1) * nsY, mW + (nix + 1) * nsX]];
-    
-    return { micro, nano, mRect, nRect };
+    return { 
+        micro, nano, 
+        mRect: [[mS, mW], [mN, mE]], 
+        nRect: [[mS + niy * nsY, mW + nix * nsX], [mS + (niy + 1) * nsY, mW + (nix + 1) * nsX]] 
+    };
 }
 
 function updateGridAndLabels() {
@@ -106,17 +98,23 @@ function updateGridAndLabels() {
     if (!mymap.hasLayer(cuadriculaLayer) || !rawCuadricula || z < 10) return;
 
     const bounds = mymap.getBounds();
+
     rawCuadricula.features.forEach(f => {
-        const mB = L.geoJSON(f).getBounds();
+        const poly = L.geoJSON(f);
+        const mB = poly.getBounds();
+        
+        // Solo procesamos si el macro-cuadro es visible
         if (!bounds.intersects(mB)) return;
 
         const macroCode = f.properties.codigo;
         const sw = mB.getSouthWest();
         const ne = mB.getNorthEast();
+        
+        // Calculamos pasos basados estrictamente en los límites de ESTE feature
         const sX = (ne.lng - sw.lng) / 24;
         const sY = (ne.lat - sw.lat) / 24;
 
-        // NIVEL MACRO
+        // ETIQUETAS MACRO
         if (z >= 10 && z < 14 && labelsEnabled) {
             L.marker(mB.getCenter(), {
                 pane: 'watermarkPane',
@@ -125,11 +123,11 @@ function updateGridAndLabels() {
             }).addTo(labelLayer);
         }
 
-        // NIVEL MICRO
+        // DIBUJO DE REJILLA (MICRO Y NANO)
         if (z >= 14) {
             for (let i = 0; i < 24; i++) {
                 for (let j = 0; j < 24; j++) {
-                    // Calculo de bordes exactos usando el origen SW
+                    // Coordenadas calculadas desde el SW para evitar acumulación de error
                     let s = sw.lat + (j * sY);
                     let n = sw.lat + ((j + 1) * sY);
                     let w = sw.lng + (i * sX);
@@ -138,18 +136,17 @@ function updateGridAndLabels() {
                     let rectB = L.latLngBounds([s, w], [n, e]);
 
                     if (bounds.intersects(rectB)) {
-                        let weight = (z >= 18) ? 1.5 : 0.5;
-                        let color = (z >= 18) ? "#1a73e8" : "#3498db";
-                        
+                        // Dibujar Micro
                         L.rectangle(rectB, { 
-                            color: color, 
-                            weight: weight, 
+                            color: (z >= 18) ? "#1a73e8" : "#3498db", 
+                            weight: (z >= 18) ? 1.5 : 0.5, 
                             fillOpacity: 0.01, 
                             interactive: false,
-                            lineCap: 'butt' // Evita que el grosor de linea invada el cuadro vecino
+                            lineCap: 'square' 
                         }).addTo(gridLayer);
                         
-                        if (labelsEnabled && z >= 14 && z < 18) {
+                        // Etiquetas Micro
+                        if (labelsEnabled && z < 18) {
                             const microC = `${ALFABETO[i]}${ALFABETO[j]}${i % 10}${j % 10}${Math.floor((i + j) / 5)}`;
                             L.marker(rectB.getCenter(), {
                                 pane: 'watermarkPane',
@@ -162,17 +159,17 @@ function updateGridAndLabels() {
                             }).addTo(labelLayer);
                         }
 
-                        // NIVEL NANO (DENTRO DEL MICRO)
+                        // Dibujar Nano si el zoom es alto
                         if (z >= 18) {
-                            const nsX = sX / 10, nsY = sY / 10;
+                            const nsX = sX / 10;
+                            const nsY = sY / 10;
                             for (let ni = 0; ni < 10; ni++) {
                                 for (let nj = 0; nj < 10; nj++) {
-                                    let ns = s + (nj * nsY), nn = s + ((nj + 1) * nsY);
-                                    let nw = w + (ni * nsX), ne_nano = w + ((ni + 1) * nsX);
-                                    let nRectB = L.latLngBounds([ns, nw], [nn, ne_nano]);
-                                    
+                                    let ns = s + (nj * nsY);
+                                    let nw = w + (ni * nsX);
+                                    let nRectB = L.latLngBounds([ns, nw], [ns + nsY, nw + nsX]);
                                     if (bounds.contains(nRectB.getCenter())) {
-                                        L.rectangle(nRectB, { color: "#e67e22", weight: 0.4, fillOpacity: 0.05, interactive: false }).addTo(gridLayer);
+                                        L.rectangle(nRectB, { color: "#e67e22", weight: 0.3, fillOpacity: 0.05, interactive: false }).addTo(gridLayer);
                                     }
                                 }
                             }
@@ -190,14 +187,15 @@ $('#toggle-wm').click(function() {
     updateGridAndLabels();
 });
 
-mymap.on('overlayadd overlayremove', function() {
-    updateGridAndLabels();
-});
-
-mymap.on('moveend zoomend', updateGridAndLabels);
+mymap.on('overlayadd overlayremove moveend zoomend', updateGridAndLabels);
 
 $.getJSON("estafetas.geojson", d => { rawZonas = d; L.geoJSON(d, {style:{color:"#000", weight:1.5, fillOpacity:0.1, fillColor:"#888"}}).addTo(zonasGeoLayer); });
-$.getJSON("cuadricula.geojson", d => { rawCuadricula = d; L.geoJSON(d, {style:{color:"#2c3e50", weight:1, fillOpacity:0.05}}).addTo(cuadriculaLayer); updateGridAndLabels(); });
+$.getJSON("cuadricula.geojson", d => { 
+    rawCuadricula = d; 
+    geoJsonCuadriculaLayer = L.geoJSON(d, {style:{color:"#2c3e50", weight:1, fillOpacity:0.05}});
+    geoJsonCuadriculaLayer.addTo(cuadriculaLayer); 
+    updateGridAndLabels(); 
+});
 $.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style:{color:"#e74c3c", weight:2}}).addTo(rutasLayer));
 $.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:6, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasPointsLayer));
 
@@ -205,7 +203,7 @@ mymap.on("click", function (e) {
     selectionLayer.clearLayers();
     if (!rawCuadricula || !rawZonas) return;
     const hZ = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawZonas));
-    const hC = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawCuadricula));
+    const hC = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], geoJsonCuadriculaLayer);
 
     if (hC.length === 0) {
         L.popup().setLatLng(e.latlng).setContent("<b>Área no válida</b>").openOn(mymap);
