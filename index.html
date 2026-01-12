@@ -399,96 +399,53 @@ mymap.on("click", function (e) {
     } else if (z >= 14 && z < 17) {
         // NIVEL MICRO
         titulo = "ÁREA POSTAL";
-        // BUSCAR EN CACHE NANO PRIMERO
-        let closestWatermark = findClosestWatermark(e.latlng, nanoWatermarkCache, 0.002);
-        let microWatermark = null;
-        let microCode = "";
-        let nanoCode = "";
+        const closestWatermark = findClosestWatermark(e.latlng, microWatermarkCache, 0.01);
         
         if (closestWatermark) {
-            console.log("Watermark nano encontrado en cache");
-            nanoCode = closestWatermark.code;
+            finalCode += `-${closestWatermark.code}`;
             
-            // Buscar micro correspondiente en cache
-            const microKey = getCacheKey(featureIndex, 'micro', 
-                closestWatermark.indices.microIx, 
-                closestWatermark.indices.microIy);
-            microWatermark = microWatermarkCache.get(microKey);
-            
-            if (microWatermark) {
-                microCode = microWatermark.code;
-            }
-        } else {
-            // FALLBACK: Calcular manualmente
-            console.log("Calculando micro y nano manualmente");
-            const indices = calculateNanoIndicesFromPoint(e.latlng.lat, e.latlng.lng, hC[0].feature);
-            microCode = getMicroCodeFromIndices(indices.microIx, indices.microIy);
-            nanoCode = generateNanoCode(indices.nix, indices.niy, indices.microIx, indices.microIy);
-        }
-        
-        // CONSTRUIR CÓDIGO COMPLETO
-        finalCode += `-${microCode}-${nanoCode}`;
-        
-        // MOSTRAR SELECCIÓN
-        if (closestWatermark) {
-            // Usar bounds del cache
             L.polygon(closestWatermark.bounds, {
-                color: "#2980b9", 
+                color: "#3498db", 
                 weight: 3, 
-                fillColor: "#2980b9",
-                fillOpacity: 0.5,  // Opacidad buena para ver el cuadro
+                fillColor: "#3498db",
+                fillOpacity: 0.5,
                 className: 'highlighted-polygon'
             }).addTo(selectionLayer);
             
-            // Marcador de selección - CON DETECCIÓN DE LABELS EXISTENTES
-            const nanoCenter = closestWatermark.center;
-            let labelExists = false;
-            
-            // Verificar si hay un label permanente en esta ubicación
-            labelLayer.eachLayer(function(layer) {
-                if (layer instanceof L.Marker) {
-                    const markerLatLng = layer.getLatLng();
-                    const distance = markerLatLng.distanceTo(nanoCenter);
-                    if (distance < 5) { // Si hay label permanente muy cerca
-                        labelExists = true;
-                        // Opcional: remover el label temporalmente
-                        labelLayer.removeLayer(layer);
-                    }
-                }
-            });
-            
-            // Solo mostrar marcador si no hay label permanente
-            if (!labelExists) {
-                L.marker(nanoCenter, {
-                    icon: L.divIcon({ 
-                        className: 'nano-selection-label', 
-                        html: `<div style="background: rgba(255,255,255,0.95); color: #2980b9; padding: 2px 5px; border-radius: 3px; border: 2px solid #2980b9; font-weight: bold; font-size: 10px;">${nanoCode}</div>`, 
-                        iconSize: [45, 22],
-                        iconAnchor: [22, 11]
-                    }),
-                    zIndexOffset: 1000
-                }).addTo(selectionLayer);
-            }
-            
-        } else {
-            // FALLBACK: Calcular bounds manualmente
-            const indices = calculateNanoIndicesFromPoint(e.latlng.lat, e.latlng.lng, hC[0].feature);
-            const coords = hC[0].feature.geometry.coordinates[0];
-            
-            const nanoBounds = [
-                getPointInGrid(coords, indices.microIx + indices.nix/NANO_RES, indices.microIy + indices.niy/NANO_RES, 24, 24),
-                getPointInGrid(coords, indices.microIx + (indices.nix+1)/NANO_RES, indices.microIy + indices.niy/NANO_RES, 24, 24),
-                getPointInGrid(coords, indices.microIx + (indices.nix+1)/NANO_RES, indices.microIy + (indices.niy+1)/NANO_RES, 24, 24),
-                getPointInGrid(coords, indices.microIx + indices.nix/NANO_RES, indices.microIy + (indices.niy+1)/NANO_RES, 24, 24)
-            ];
-            
-            const nanoCenter = getPointInGrid(coords, 
-                indices.microIx + (indices.nix + 0.5)/NANO_RES,
-                indices.microIy + (indices.niy + 0.5)/NANO_RES,
-                24, 24
+            L.marker(closestWatermark.center, {
+                icon: L.divIcon({ 
+                    className: 'micro-selection-label', 
+                    html: `<div style="background: rgba(255,255,255,0.95); color: #3498db; padding: 2px 5px; border-radius: 3px; border: 2px solid #3498db; font-weight: bold;">${closestWatermark.code}</div>`, 
+                    iconSize: [50, 22],
+                    iconAnchor: [25, 11]
+                }),
+                zIndexOffset: 1000
+            }).addTo(selectionLayer);
+        }
+        
+    } else {
+        // NIVEL NANO - CORREGIDO
+        titulo = "CÓDIGO POSTAL";
+        
+        // Buscar en cache nano primero
+        const closestWatermark = findClosestWatermark(e.latlng, nanoWatermarkCache, 0.002);
+        
+        if (closestWatermark) {
+            // Obtener código micro del cache
+            const microKey = getCacheKey(featureIndex, 'micro', 
+                closestWatermark.indices.microIx, 
+                closestWatermark.indices.microIy);
+            const microWatermark = microWatermarkCache.get(microKey);
+            const microCode = microWatermark ? microWatermark.code : getMicroCodeFromIndices(
+                closestWatermark.indices.microIx, 
+                closestWatermark.indices.microIy
             );
             
-            L.polygon(nanoBounds, {
+            // Código completo
+            finalCode += `-${microCode}-${closestWatermark.code}`;
+            
+            // MOSTRAR CUADRO NANO
+            L.polygon(closestWatermark.bounds, {
                 color: "#2980b9", 
                 weight: 3, 
                 fillColor: "#2980b9",
@@ -496,47 +453,51 @@ mymap.on("click", function (e) {
                 className: 'highlighted-polygon'
             }).addTo(selectionLayer);
             
-            // Verificar labels existentes
-            let labelExists = false;
+            // OCULTAR LABEL PERMANENTE TEMPORALMENTE
             labelLayer.eachLayer(function(layer) {
                 if (layer instanceof L.Marker) {
                     const markerLatLng = layer.getLatLng();
-                    const distance = markerLatLng.distanceTo(nanoCenter);
+                    const distance = markerLatLng.distanceTo(closestWatermark.center);
                     if (distance < 5) {
-                        labelExists = true;
-                        labelLayer.removeLayer(layer);
+                        layer.setOpacity(0); // Ocultar temporalmente
                     }
                 }
             });
             
-            if (!labelExists) {
-                L.marker(nanoCenter, {
-                    icon: L.divIcon({ 
-                        className: 'nano-selection-label', 
-                        html: `<div style="background: rgba(255,255,255,0.95); color: #2980b9; padding: 2px 5px; border-radius: 3px; border: 2px solid #2980b9; font-weight: bold; font-size: 10px;">${nanoCode}</div>`, 
-                        iconSize: [45, 22],
-                        iconAnchor: [22, 11]
-                    }),
-                    zIndexOffset: 1000
+            // Mostrar marcador de selección
+            L.marker(closestWatermark.center, {
+                icon: L.divIcon({ 
+                    className: 'nano-selection-label', 
+                    html: `<div style="background: white; color: #2980b9; padding: 2px 5px; border-radius: 3px; border: 2px solid #2980b9; font-weight: bold; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">${closestWatermark.code}</div>`, 
+                    iconSize: [45, 22],
+                    iconAnchor: [22, 11]
+                }),
+                zIndexOffset: 1000
+            }).addTo(selectionLayer);
+            
+            // Restaurar opacidad después de 3 segundos
+            setTimeout(() => {
+                labelLayer.eachLayer(function(layer) {
+                    if (layer instanceof L.Marker && layer.getOpacity() === 0) {
+                        layer.setOpacity(1);
+                    }
+                });
+            }, 3000);
+            
+            // Mostrar borde micro para referencia
+            if (microWatermark) {
+                L.polygon(microWatermark.bounds, {
+                    color: "#3498db", 
+                    weight: 2, 
+                    fillColor: "transparent",
+                    dashArray: "5, 5",
+                    opacity: 0.4
                 }).addTo(selectionLayer);
             }
         }
-        
-        // También mostrar borde MICRO para referencia
-        if (microWatermark) {
-            L.polygon(microWatermark.bounds, {
-                color: "#3498db", 
-                weight: 2, 
-                fillColor: "transparent",
-                dashArray: "5, 5",
-                opacity: 0.4
-            }).addTo(selectionLayer);
-        }
-        
-        console.log(`Código completo: ${finalCode}`);
     }
 
-    // console.log(`Título final: ${titulo}, Código: ${finalCode}`);
+    console.log(`Título final: ${titulo}, Código: ${finalCode}`);
     
     const ws = encodeURIComponent(`📍 Mi ubicación: ${finalCode}\nGPS: ${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`);
     
@@ -685,6 +646,7 @@ updateGridAndLabels();
 </script>
 </body>
 </html>
+
 
 
 
