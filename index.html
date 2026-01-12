@@ -40,6 +40,22 @@
         .warning-popup .leaflet-popup-tip {
             background: #ffc107;
         }
+        .estafeta-popup .leaflet-popup-content-wrapper {
+            background: #d4edda;
+            border: 2px solid #28a745;
+            border-radius: 8px;
+        }
+        .estafeta-popup .leaflet-popup-tip {
+            background: #28a745;
+        }
+        .ruta-popup .leaflet-popup-content-wrapper {
+            background: #f8d7da;
+            border: 2px solid #dc3545;
+            border-radius: 8px;
+        }
+        .ruta-popup .leaflet-popup-tip {
+            background: #dc3545;
+        }
     
     </style>
 </head>
@@ -47,7 +63,7 @@
 
 <div class="map-title"><h1>SISTEMA POSTAL DE PANAMÁ</h1></div>
 <div class="search-container">
-    <input type="text" id="search-input" placeholder="Ej: J4199 o A6299-GT674-A5C">
+    <input type="text" id="search-input" placeholder="Ej: A0001 o A0001-GT674-A5C">
     <button id="search-btn">IR</button>
 </div>
 <div id="toggle-wm" class="toggle-watermark">TEXTO: ON</div>
@@ -72,6 +88,7 @@ const estafetasPointsLayer = L.layerGroup().addTo(mymap);
 const userLocationLayer = L.layerGroup().addTo(mymap);
 
 let rawCuadricula = null, rawZonas = null;
+let rutasData = null, estafetasData = null;
 let labelsEnabled = true;
 const ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZ";
 const NANO_RES = 25; 
@@ -83,6 +100,14 @@ const nanoWatermarkCache = new Map();
 
 // Variable para almacenar labels temporales que se deben restaurar
 let hiddenLabels = [];
+
+// Función para generar el código macro según el nuevo formato
+function generarCodigoMacro(feature) {
+    const primeraLetra = feature.properties.codigo ? feature.properties.codigo.charAt(0) : 'A';
+    const fid = feature.properties.fid || 0;
+    // Formato: primera letra + '0' + fid (con padding a 4 dígitos)
+    return primeraLetra + '0' + fid.toString().padStart(3, '0');
+}
 
 // Función hash mejorada para generar códigos desordenados
 function hashPosition(ix, iy, salt = 0) {
@@ -197,7 +222,7 @@ function updateGridAndLabels() {
             L.marker(fBounds.getCenter(), {
                 icon: L.divIcon({ 
                     className: 'watermark-label-fixed', 
-                    html: f.properties.codigo, 
+                    html: generarCodigoMacro(f), 
                     iconSize: [60, 20] 
                 })
             }).addTo(labelLayer);
@@ -362,8 +387,21 @@ $.getJSON("estafetas.geojson", d => {
     rawZonas = d; 
     L.geoJSON(d, {style: {color: "#2c3e50", weight: 1.5, fillOpacity: 0.05}}).addTo(zonasGeoLayer); 
 });
-$.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style: {color: "#e74c3c", weight: 2}}).addTo(rutasLayer));
-$.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:5, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasPointsLayer));
+$.getJSON("estafetasl.geojson", d => { 
+    rutasData = d;
+    L.geoJSON(d, {style: {color: "#e74c3c", weight: 2}}).addTo(rutasLayer);
+});
+$.getJSON("estafetasp.geojson", d => { 
+    estafetasData = d;
+    L.geoJSON(d, {
+        pointToLayer: (f, ll) => L.circleMarker(ll, {
+            radius: 5, 
+            color: "#27ae60", 
+            fillColor: "#2ecc71", 
+            fillOpacity: 1
+        })
+    }).addTo(estafetasPointsLayer);
+});
 
 // Función para restaurar labels ocultos
 function restoreHiddenLabels() {
@@ -373,6 +411,98 @@ function restoreHiddenLabels() {
         }
     });
     hiddenLabels = [];
+}
+
+// FUNCIÓN PARA VERIFICAR CLIC EN RUTAS
+function verificarClicEnRutas(latlng) {
+    if (!rutasData) return null;
+    
+    // Verificar si el clic está cerca de alguna ruta (línea)
+    let rutaMasCercana = null;
+    let distanciaMinima = 0.001; // Aproximadamente 100 metros en grados
+    
+    rutasData.features.forEach(feature => {
+        if (feature.geometry.type === 'LineString') {
+            const coordinates = feature.geometry.coordinates;
+            
+            // Verificar distancia a cada segmento de la línea
+            for (let i = 0; i < coordinates.length - 1; i++) {
+                const p1 = {lat: coordinates[i][1], lng: coordinates[i][0]};
+                const p2 = {lat: coordinates[i+1][1], lng: coordinates[i+1][0]};
+                
+                // Calcular distancia del punto a la línea
+                const distancia = distanciaPuntoALinea(latlng, p1, p2);
+                
+                if (distancia < distanciaMinima) {
+                    distanciaMinima = distancia;
+                    rutaMasCercana = feature;
+                }
+            }
+        }
+    });
+    
+    return rutaMasCercana;
+}
+
+// FUNCIÓN PARA VERIFICAR CLIC EN ESTAFETAS
+function verificarClicEnEstafetas(latlng) {
+    if (!estafetasData) return null;
+    
+    let estafetaMasCercana = null;
+    let distanciaMinima = 0.0005; // Aproximadamente 50 metros en grados
+    
+    estafetasData.features.forEach(feature => {
+        if (feature.geometry.type === 'Point') {
+            const punto = {
+                lat: feature.geometry.coordinates[1],
+                lng: feature.geometry.coordinates[0]
+            };
+            
+            const distancia = Math.sqrt(
+                Math.pow(latlng.lat - punto.lat, 2) + 
+                Math.pow(latlng.lng - punto.lng, 2)
+            );
+            
+            if (distancia < distanciaMinima) {
+                distanciaMinima = distancia;
+                estafetaMasCercana = feature;
+            }
+        }
+    });
+    
+    return estafetaMasCercana;
+}
+
+// Función para calcular distancia de punto a línea
+function distanciaPuntoALinea(p, a, b) {
+    const A = p.lat - a.lat;
+    const B = p.lng - a.lng;
+    const C = b.lat - a.lat;
+    const D = b.lng - a.lng;
+    
+    const dot = A * C + B * D;
+    const lenSq = C * C + D * D;
+    let param = -1;
+    
+    if (lenSq !== 0) param = dot / lenSq;
+    
+    let xx, yy;
+    
+    if (param < 0) {
+        xx = a.lng;
+        yy = a.lat;
+    } else if (param > 1) {
+        xx = b.lng;
+        yy = b.lat;
+    } else {
+        xx = a.lng + param * C;
+        yy = a.lat + param * D;
+    }
+    
+    const dx = p.lng - xx;
+    const dy = p.lat - yy;
+    
+    return Math.sqrt(dx * dx + dy * dy);
 }
 
 // EVENTO CLIC CORREGIDO
@@ -387,37 +517,32 @@ mymap.on("click", function (e) {
     
     if (!rawCuadricula || !rawZonas) return;
     
+    // Primero verificar si se hizo clic en una estafeta
+    const estafetaClic = verificarClicEnEstafetas(e.latlng);
+    if (estafetaClic) {
+        mostrarPopupEstafeta(e.latlng, estafetaClic);
+        return;
+    }
+    
+    // Luego verificar si se hizo clic en una ruta
+    const rutaClic = verificarClicEnRutas(e.latlng);
+    if (rutaClic) {
+        mostrarPopupRuta(e.latlng, rutaClic);
+        return;
+    }
+    
+    // Si no es estafeta ni ruta, verificar en zonas o cuadrícula
     const hZ = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawZonas));
     const hC = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawCuadricula));
 
     // VERIFICAR SI ESTÁ EN ÁREA NO DEFINIDA
     if (hC.length === 0) {
-        // Mostrar popup elegante
-        const popupOffset = [0, -60];
-        const popupLatLng = L.latLng(e.latlng.lat + 0.0004, e.latlng.lng);
-        
-        L.popup({offset: popupOffset, className: 'warning-popup'})
-            .setLatLng(popupLatLng)
-            .setContent(`
-                <div style="text-align:center; padding: 10px;">
-                    <div style="font-size: 16px; color: #e74c3c; margin-bottom: 5px;">
-                        ⚠️ ÁREA NO DEFINIDA
-                    </div>
-                    <div style="font-size: 12px; color: #7f8c8d; margin-bottom: 15px;">
-                        Esta ubicación se encuentra fuera de las zonas postales definidas
-                    </div>
-                    <div style="display: flex; gap: 10px; justify-content: center;">
-                        <button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${e.latlng.lat},${e.latlng.lng}')">📍 MAPS</button>
-                        <button class="btn-ws" onclick="window.open('https://wa.me/?text=${encodeURIComponent(`📍 Ubicación fuera del sistema postal\nGPS: ${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`)}')">💬 WS</button>
-                    </div>
-                </div>
-            `)
-            .openOn(mymap);
+        mostrarPopupAreaNoDefinida(e.latlng);
         return;
     }
 
     const useZonas = mymap.hasLayer(zonasGeoLayer) && hZ.length > 0;
-    const macroID = useZonas ? hZ[0].feature.properties.VM_LEVEL : hC[0].feature.properties.codigo;
+    const macroID = useZonas ? hZ[0].feature.properties.VM_LEVEL : generarCodigoMacro(hC[0].feature);
     
     let titulo = "ZONAS POSTALES", finalCode = macroID;
     const z = mymap.getZoom();
@@ -610,6 +735,124 @@ mymap.on("click", function (e) {
     });
 });
 
+// FUNCIÓN PARA MOSTRAR POPUP DE ESTAFETA
+function mostrarPopupEstafeta(latlng, estafeta) {
+    const propiedades = estafeta.properties || {};
+    const nombre = propiedades.nombre || propiedades.name || "Estafeta Postal";
+    const codigo = propiedades.codigo || propiedades.id || "N/A";
+    const direccion = propiedades.direccion || propiedades.address || "Dirección no disponible";
+    const horario = propiedades.horario || propiedades.hours || "Horario no disponible";
+    const telefono = propiedades.telefono || propiedades.phone || "Teléfono no disponible";
+    
+    const popupOffset = [0, -60];
+    const popupLatLng = L.latLng(latlng.lat + 0.0004, latlng.lng);
+    
+    const popup = L.popup({offset: popupOffset, className: 'estafeta-popup'})
+        .setLatLng(popupLatLng)
+        .setContent(`
+            <div style="text-align:center; padding: 10px; max-width: 250px;">
+                <div style="font-size: 16px; color: #28a745; margin-bottom: 5px; font-weight: bold;">
+                    📮 ${nombre}
+                </div>
+                <div style="font-size: 12px; color: #155724; margin-bottom: 10px;">
+                    <strong>Código:</strong> ${codigo}<br>
+                    <strong>Dirección:</strong> ${direccion}<br>
+                    <strong>Horario:</strong> ${horario}<br>
+                    <strong>Teléfono:</strong> ${telefono}
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
+                    <button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${latlng.lat},${latlng.lng}')">📍 MAPS</button>
+                    <button class="btn-ws" onclick="window.open('https://wa.me/?text=${encodeURIComponent(`📍 Estafeta Postal: ${nombre}\nCódigo: ${codigo}\nDirección: ${direccion}\nGPS: ${latlng.lat.toFixed(6)},${latlng.lng.toFixed(6)}`)}')">💬 WS</button>
+                </div>
+            </div>
+        `)
+        .openOn(mymap);
+    
+    // Resaltar la estafeta seleccionada
+    selectionLayer.clearLayers();
+    L.circleMarker(latlng, {
+        radius: 8,
+        color: "#28a745",
+        fillColor: "#28a745",
+        fillOpacity: 0.8,
+        weight: 3
+    }).addTo(selectionLayer);
+    
+    popup.on('remove', function() {
+        selectionLayer.clearLayers();
+    });
+}
+
+// FUNCIÓN PARA MOSTRAR POPUP DE RUTA
+function mostrarPopupRuta(latlng, ruta) {
+    const propiedades = ruta.properties || {};
+    const nombre = propiedades.nombre || propiedades.name || "Ruta Postal";
+    const codigo = propiedades.codigo || propiedades.id || "N/A";
+    const descripcion = propiedades.descripcion || propiedades.description || "Descripción no disponible";
+    const distancia = propiedades.distancia || propiedades.distance || "Distancia no disponible";
+    
+    const popupOffset = [0, -60];
+    const popupLatLng = L.latLng(latlng.lat + 0.0004, latlng.lng);
+    
+    const popup = L.popup({offset: popupOffset, className: 'ruta-popup'})
+        .setLatLng(popupLatLng)
+        .setContent(`
+            <div style="text-align:center; padding: 10px; max-width: 250px;">
+                <div style="font-size: 16px; color: #dc3545; margin-bottom: 5px; font-weight: bold;">
+                    🚚 ${nombre}
+                </div>
+                <div style="font-size: 12px; color: #721c24; margin-bottom: 10px;">
+                    <strong>Código:</strong> ${codigo}<br>
+                    <strong>Descripción:</strong> ${descripcion}<br>
+                    <strong>Distancia:</strong> ${distancia}
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
+                    <button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${latlng.lat},${latlng.lng}')">📍 MAPS</button>
+                    <button class="btn-ws" onclick="window.open('https://wa.me/?text=${encodeURIComponent(`📍 Ruta Postal: ${nombre}\nCódigo: ${codigo}\nDescripción: ${descripcion}\nGPS: ${latlng.lat.toFixed(6)},${latlng.lng.toFixed(6)}`)}')">💬 WS</button>
+                </div>
+            </div>
+        `)
+        .openOn(mymap);
+    
+    // Resaltar el punto de la ruta seleccionada
+    selectionLayer.clearLayers();
+    L.circleMarker(latlng, {
+        radius: 6,
+        color: "#dc3545",
+        fillColor: "#dc3545",
+        fillOpacity: 0.8,
+        weight: 3
+    }).addTo(selectionLayer);
+    
+    popup.on('remove', function() {
+        selectionLayer.clearLayers();
+    });
+}
+
+// FUNCIÓN PARA MOSTRAR POPUP DE ÁREA NO DEFINIDA
+function mostrarPopupAreaNoDefinida(latlng) {
+    const popupOffset = [0, -60];
+    const popupLatLng = L.latLng(latlng.lat + 0.0004, latlng.lng);
+    
+    L.popup({offset: popupOffset, className: 'warning-popup'})
+        .setLatLng(popupLatLng)
+        .setContent(`
+            <div style="text-align:center; padding: 10px;">
+                <div style="font-size: 16px; color: #e74c3c; margin-bottom: 5px;">
+                    ⚠️ ÁREA NO DEFINIDA
+                </div>
+                <div style="font-size: 12px; color: #7f8c8d; margin-bottom: 15px;">
+                    Esta ubicación se encuentra fuera de las zonas postales definidas
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${latlng.lat},${latlng.lng}')">📍 MAPS</button>
+                    <button class="btn-ws" onclick="window.open('https://wa.me/?text=${encodeURIComponent(`📍 Ubicación fuera del sistema postal\nGPS: ${latlng.lat.toFixed(6)},${latlng.lng.toFixed(6)}`)}')">💬 WS</button>
+                </div>
+            </div>
+        `)
+        .openOn(mymap);
+}
+
 // BUSCADOR
 document.getElementById('search-btn').addEventListener('click', () => {
     const code = document.getElementById('search-input').value.trim().toUpperCase();
@@ -617,7 +860,9 @@ document.getElementById('search-btn').addEventListener('click', () => {
     
     const parts = code.split('-');
     const macroPart = parts[0];
-    let f = rawCuadricula.features.find(feat => feat.properties.codigo === macroPart);
+    
+    // Buscar usando el nuevo formato de código
+    let f = rawCuadricula.features.find(feat => generarCodigoMacro(feat) === macroPart);
     
     if (f) {
         if (parts.length > 1) {
@@ -746,4 +991,3 @@ updateGridAndLabels();
 </script>
 </body>
 </html>
-
