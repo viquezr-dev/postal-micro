@@ -250,7 +250,7 @@ function updateGridAndLabels() {
                                 });
                                 
                                 // Mostrar algunos labels nano (cada 5x5)
-                                if (labelsEnabled && ni % 5 === 0 && nj % 5 === 0) {
+                                if (labelsEnabled && ni % 7 === 0 && nj % 7 === 0) {
                                     L.marker(nanoCenter, {
                                         icon: L.divIcon({ 
                                             className: 'nano-label-fixed', 
@@ -358,7 +358,7 @@ $.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style: {color: "#e74c3c", wei
 $.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:5, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasPointsLayer));
 
 // EVENTO CLIC - VERSIÓN MEJORADA CON FALLBACK
-mymap.on("click", function (e) {
+    mymap.on("click", function (e) {
     console.log("=== CLIC EN MAPA ===");
     console.log("Coordenadas:", e.latlng.lat.toFixed(6), e.latlng.lng.toFixed(6));
     
@@ -428,7 +428,7 @@ mymap.on("click", function (e) {
         titulo = "CÓDIGO POSTAL";
         
         // PRIMERO: Buscar en cache nano
-        let closestWatermark = findClosestWatermark(e.latlng, nanoWatermarkCache, 0.002);
+    let closestWatermark = findClosestWatermark(e.latlng, nanoWatermarkCache, 0.002);
     let microWatermark = null;
     let microCode = "";
     let nanoCode = "";
@@ -680,4 +680,5 @@ updateGridAndLabels();
 </script>
 </body>
 </html>
+
 
