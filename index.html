@@ -536,7 +536,7 @@ mymap.on("click", function (e) {
         console.log(`Código completo: ${finalCode}`);
     }
 
-    console.log(`Título final: ${titulo}, Código: ${finalCode}`);
+    // console.log(`Título final: ${titulo}, Código: ${finalCode}`);
     
     const ws = encodeURIComponent(`📍 Mi ubicación: ${finalCode}\nGPS: ${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`);
     
@@ -685,6 +685,7 @@ updateGridAndLabels();
 </script>
 </body>
 </html>
+
 
 
 
