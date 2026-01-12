@@ -70,6 +70,9 @@ const NUMEROS = "0123456789";
 const microWatermarkCache = new Map();
 const nanoWatermarkCache = new Map();
 
+// Variable para almacenar labels temporales que se deben restaurar
+let hiddenLabels = [];
+
 // Función hash mejorada para generar códigos desordenados
 function hashPosition(ix, iy, salt = 0) {
     let hash = (ix * 15485863) ^ (iy * 2860486313) ^ (salt * 5915587277);
@@ -166,6 +169,7 @@ function updateGridAndLabels() {
     labelLayer.clearLayers();
     microWatermarkCache.clear();
     nanoWatermarkCache.clear();
+    hiddenLabels = []; // Limpiar labels ocultos
     
     if (!rawCuadricula) return;
     const z = mymap.getZoom();
@@ -266,7 +270,7 @@ function updateGridAndLabels() {
                 let v = [], h = [];
                 for(let j=0; j<=24; j++) {
                     v.push(getPointInGrid(coords, i, j, 24, 24));
-                    h.push(getPointInGrid(coords, j, i, 24, 24));
+                    h.push(getPointInGrid(coords, j, i, 24, 24);
                 }
                 
                 let weight, opacity, color;
@@ -350,18 +354,36 @@ $.getJSON("estafetas.geojson", d => {
 $.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style: {color: "#e74c3c", weight: 2}}).addTo(rutasLayer));
 $.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:5, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasPointsLayer));
 
+// Función para restaurar labels ocultos
+function restoreHiddenLabels() {
+    hiddenLabels.forEach(layer => {
+        if (layer && typeof layer.setOpacity === 'function') {
+            layer.setOpacity(1);
+        }
+    });
+    hiddenLabels = [];
+}
+
 // EVENTO CLIC CORREGIDO
 mymap.on("click", function (e) {
     console.log("=== CLIC EN MAPA ===");
     console.log("Coordenadas:", e.latlng.lat.toFixed(6), e.latlng.lng.toFixed(6));
     
+    // Limpiar selección anterior y restaurar labels
     selectionLayer.clearLayers();
+    restoreHiddenLabels();
+    hiddenLabels = [];
+    
     if (!rawCuadricula || !rawZonas) return;
     
     const hZ = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawZonas));
     const hC = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawCuadricula));
 
-    if (hC.length === 0) return;
+    // VERIFICAR SI ESTÁ EN ÁREA NO DEFINIDA
+    if (hC.length === 0) {
+        alert("Esta área no está definida en el sistema postal");
+        return;
+    }
 
     const useZonas = mymap.hasLayer(zonasGeoLayer) && hZ.length > 0;
     const macroID = useZonas ? hZ[0].feature.properties.VM_LEVEL : hC[0].feature.properties.codigo;
@@ -450,6 +472,7 @@ mymap.on("click", function (e) {
                     const distance = markerLatLng.distanceTo(closestWatermark.center);
                     if (distance < 5) {
                         layer.setOpacity(0);
+                        hiddenLabels.push(layer); // Guardar referencia
                     }
                 }
             });
@@ -464,15 +487,6 @@ mymap.on("click", function (e) {
                 }),
                 zIndexOffset: 1000
             }).addTo(selectionLayer);
-            
-            // Restaurar opacidad después de 3 segundos
-            setTimeout(() => {
-                labelLayer.eachLayer(function(layer) {
-                    if (layer instanceof L.Marker && layer.getOpacity() === 0) {
-                        layer.setOpacity(1);
-                    }
-                });
-            }, 3000);
             
             // Mostrar borde micro para referencia
             if (microWatermark) {
@@ -514,6 +528,18 @@ mymap.on("click", function (e) {
                 className: 'highlighted-polygon'
             }).addTo(selectionLayer);
             
+            // Ocultar label permanente si existe
+            labelLayer.eachLayer(function(layer) {
+                if (layer instanceof L.Marker) {
+                    const markerLatLng = layer.getLatLng();
+                    const distance = markerLatLng.distanceTo(nanoCenter);
+                    if (distance < 5) {
+                        layer.setOpacity(0);
+                        hiddenLabels.push(layer);
+                    }
+                }
+            });
+            
             L.marker(nanoCenter, {
                 icon: L.divIcon({ 
                     className: 'nano-selection-label', 
@@ -530,11 +556,11 @@ mymap.on("click", function (e) {
     
     const ws = encodeURIComponent(`📍 Mi ubicación: ${finalCode}\nGPS: ${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`);
     
-    // Popup
+    // Crear popup con evento para limpiar al cerrar
     const popupOffset = [0, -60];
     const popupLatLng = L.latLng(e.latlng.lat + 0.0004, e.latlng.lng);
     
-    L.popup({offset: popupOffset})
+    const popup = L.popup({offset: popupOffset})
         .setLatLng(popupLatLng)
         .setContent(`
             <div style="text-align:center;">
@@ -545,6 +571,12 @@ mymap.on("click", function (e) {
             </div>
         `)
         .openOn(mymap);
+    
+    // Evento para limpiar selección cuando se cierra el popup
+    popup.on('remove', function() {
+        selectionLayer.clearLayers();
+        restoreHiddenLabels();
+    });
 });
 
 // BUSCADOR
@@ -573,6 +605,8 @@ document.getElementById('search-btn').addEventListener('click', () => {
                     mymap.setView(center, zoomLevel);
                     
                     selectionLayer.clearLayers();
+                    restoreHiddenLabels();
+                    
                     const mRect = [
                         getPointInGrid(coords, ix, iy, 24, 24),
                         getPointInGrid(coords, ix+1, iy, 24, 24),
@@ -668,6 +702,12 @@ mymap.on('locationfound', function(e) {
 
 mymap.on('locationerror', function(e) {
     console.error("Error de ubicación:", e.message);
+});
+
+// También limpiar selección al hacer zoom o mover el mapa
+mymap.on('zoomstart movestart', function() {
+    selectionLayer.clearLayers();
+    restoreHiddenLabels();
 });
 
 // Inicializar
