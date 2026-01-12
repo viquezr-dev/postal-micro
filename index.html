@@ -30,6 +30,17 @@
             50% { fill-opacity: 0.7; }
             100% { fill-opacity: 0.3; }
         }
+        /* AGREGAR AQUÍ LOS ESTILOS PARA EL POPUP DE ADVERTENCIA */
+        .warning-popup .leaflet-popup-content-wrapper {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 8px;
+        }
+
+        .warning-popup .leaflet-popup-tip {
+            background: #ffc107;
+        }
+    
     </style>
 </head>
 <body>
@@ -381,7 +392,27 @@ mymap.on("click", function (e) {
 
     // VERIFICAR SI ESTÁ EN ÁREA NO DEFINIDA
     if (hC.length === 0) {
-        alert("Esta área no está definida en el sistema postal");
+        // Mostrar popup elegante
+        const popupOffset = [0, -60];
+        const popupLatLng = L.latLng(e.latlng.lat + 0.0004, e.latlng.lng);
+        
+        L.popup({offset: popupOffset, className: 'warning-popup'})
+            .setLatLng(popupLatLng)
+            .setContent(`
+                <div style="text-align:center; padding: 10px;">
+                    <div style="font-size: 16px; color: #e74c3c; margin-bottom: 5px;">
+                        ⚠️ ÁREA NO DEFINIDA
+                    </div>
+                    <div style="font-size: 12px; color: #7f8c8d; margin-bottom: 15px;">
+                        Esta ubicación se encuentra fuera de las zonas postales definidas
+                    </div>
+                    <div style="display: flex; gap: 10px; justify-content: center;">
+                        <button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${e.latlng.lat},${e.latlng.lng}')">📍 MAPS</button>
+                        <button class="btn-ws" onclick="window.open('https://wa.me/?text=${encodeURIComponent(`📍 Ubicación fuera del sistema postal\nGPS: ${e.latlng.lat.toFixed(6)},${e.latlng.lng.toFixed(6)}`)}')">💬 WS</button>
+                    </div>
+                </div>
+            `)
+            .openOn(mymap);
         return;
     }
 
@@ -715,3 +746,4 @@ updateGridAndLabels();
 </script>
 </body>
 </html>
+
