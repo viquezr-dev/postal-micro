@@ -505,11 +505,6 @@ function verificarClicEnRutas(latlng) {
     if (!rutasData) return null;
     
     // Usar leaflet-pip para detectar si el clic está en alguna ruta
-    const features = L.geoJSON(rutasData).getLayers();
-    let rutaMasCercana = null;
-    let distanciaMinima = 0.0005; // ~50 metros en grados
-    
-    // Primero intentar con pointInLayer
     const punto = [latlng.lng, latlng.lat];
     const rutasEnPunto = leafletPip.pointInLayer(punto, L.geoJSON(rutasData));
     
@@ -517,8 +512,15 @@ function verificarClicEnRutas(latlng) {
         return rutasEnPunto[0].feature;
     }
     
-    // Si no encuentra con pointInLayer, buscar por proximidad
-    features.forEach(layer => {
+    // Si no encuentra con pointInLayer, buscar por proximidad con una tolerancia mayor
+    let rutaMasCercana = null;
+    let distanciaMinima = 0.0008; // Aumentar tolerancia para rutas (~80 metros)
+    
+    // Crear una capa temporal para buscar rutas cercanas
+    const capaRutasTemp = L.geoJSON(rutasData);
+    const layers = capaRutasTemp.getLayers();
+    
+    layers.forEach(layer => {
         if (layer instanceof L.Polyline) {
             const latlngs = layer.getLatLngs();
             
@@ -533,6 +535,7 @@ function verificarClicEnRutas(latlng) {
                 if (distancia < distanciaMinima) {
                     distanciaMinima = distancia;
                     rutaMasCercana = layer.feature;
+                    console.log(`Ruta encontrada por proximidad: ${rutaMasCercana.properties.RUTA}, distancia: ${distancia}`);
                 }
             }
         }
@@ -610,7 +613,7 @@ function distanciaPuntoASegmento(p, a, b) {
     return Math.sqrt(dx * dx + dy * dy);
 }
 
-// EVENTO CLIC MEJORADO
+// EVENTO CLIC CORREGIDO - CON RETURN PARA DETENER PROCESAMIENTO
 mymap.on("click", function (e) {
     console.log("=== CLIC EN MAPA ===");
     console.log("Coordenadas:", e.latlng.lat.toFixed(6), e.latlng.lng.toFixed(6));
@@ -624,25 +627,41 @@ mymap.on("click", function (e) {
     const rutasVisibles = mymap.hasLayer(rutasLayer);
     const estafetasVisibles = mymap.hasLayer(estafetasPointsLayer);
     
+    let elementoSeleccionado = null;
+    let tipoElemento = null;
+    
+    // Primero verificar estafetas si la capa está visible
     if (estafetasVisibles) {
-        // Primero verificar si se hizo clic en una estafeta
         const estafetaClic = verificarClicEnEstafetas(e.latlng);
         if (estafetaClic) {
-            mostrarPopupEstafeta(e.latlng, estafetaClic);
-            return;
+            elementoSeleccionado = estafetaClic;
+            tipoElemento = 'estafeta';
+            console.log("Clic en estafeta:", estafetaClic.properties.ESTAF_NAME);
         }
     }
     
-    if (rutasVisibles) {
-        // Luego verificar si se hizo clic en una ruta
+    // Luego verificar rutas si la capa está visible y no se encontró estafeta
+    if (!elementoSeleccionado && rutasVisibles) {
         const rutaClic = verificarClicEnRutas(e.latlng);
         if (rutaClic) {
-            mostrarPopupRuta(e.latlng, rutaClic);
-            return;
+            elementoSeleccionado = rutaClic;
+            tipoElemento = 'ruta';
+            console.log("Clic en ruta:", rutaClic.properties.RUTA);
         }
     }
     
-    // Si no es estafeta ni ruta, o las capas no están visibles
+    // Si se encontró una estafeta o ruta, mostrar su popup y DETENER aquí
+    if (elementoSeleccionado) {
+        if (tipoElemento === 'estafeta') {
+            mostrarPopupEstafeta(e.latlng, elementoSeleccionado);
+        } else if (tipoElemento === 'ruta') {
+            mostrarPopupRuta(e.latlng, elementoSeleccionado);
+        }
+        // IMPORTANTE: Salir de la función para no procesar el código postal
+        return;
+    }
+    
+    // Si no es estafeta ni ruta, procesar código postal
     if (!rawCuadricula || !rawZonas) return;
     
     const hZ = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawZonas));
