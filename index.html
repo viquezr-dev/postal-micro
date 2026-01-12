@@ -429,98 +429,107 @@ mymap.on("click", function (e) {
         
         // PRIMERO: Buscar en cache nano
         let closestWatermark = findClosestWatermark(e.latlng, nanoWatermarkCache, 0.002);
+    let microWatermark = null;
+    let microCode = "";
+    let nanoCode = "";
+    
+    if (closestWatermark) {
+        console.log("Watermark nano encontrado en cache");
+        nanoCode = closestWatermark.code;
         
-        if (closestWatermark) {
-            console.log("Watermark nano encontrado en cache");
+        // Buscar micro correspondiente
+        const microKey = getCacheKey(featureIndex, 'micro', 
+            closestWatermark.indices.microIx, 
+            closestWatermark.indices.microIy);
+        microWatermark = microWatermarkCache.get(microKey);
+        
+        if (microWatermark) {
+            microCode = microWatermark.code;
+        }
+    }
+    
+    // SI NO ENCONTRÓ NANO O MICRO, CALCULAR MANUALMENTE
+    if (!microCode || !nanoCode) {
+        console.log("Calculando micro y nano manualmente (fallback)");
+        
+        // Calcular índices directamente desde el punto
+        const indices = calculateNanoIndicesFromPoint(e.latlng.lat, e.latlng.lng, hC[0].feature);
+        
+        // Obtener micro code
+        microCode = getMicroCodeFromIndices(indices.microIx, indices.microIy);
+        
+        // Obtener nano code
+        nanoCode = generateNanoCode(indices.nix, indices.niy, indices.microIx, indices.microIy);
+        
+        // Buscar el watermark micro en cache para usar sus bounds
+        const microKey = getCacheKey(featureIndex, 'micro', indices.microIx, indices.microIy);
+        microWatermark = microWatermarkCache.get(microKey);
+        
+        // Si no está en cache, crear uno temporal
+        if (!closestWatermark) {
+            const coords = hC[0].feature.geometry.coordinates[0];
+            const nanoCenter = getPointInGrid(coords, 
+                indices.microIx + (indices.nix + 0.5)/NANO_RES,
+                indices.microIy + (indices.niy + 0.5)/NANO_RES,
+                24, 24
+            );
             
-            // Buscar micro correspondiente
-            const microKey = getCacheKey(featureIndex, 'micro', 
-                closestWatermark.indices.microIx, 
-                closestWatermark.indices.microIy);
-            const microWatermark = microWatermarkCache.get(microKey);
-            
-            if (microWatermark) {
-                finalCode += `-${microWatermark.code}-${closestWatermark.code}`;
-                console.log(`Código completo: ${finalCode}`);
-            } else {
-                // Calcular micro si no está en cache
-                const indices = calculateNanoIndicesFromPoint(e.latlng.lat, e.latlng.lng, hC[0].feature);
-                const microCode = getMicroCodeFromIndices(indices.microIx, indices.microIy);
-                finalCode += `-${microCode}-${closestWatermark.code}`;
-            }
-            
-            // Mostrar selección
-            L.polygon(closestWatermark.bounds, {
-                color: "#e67e22", 
-                weight: 2, 
-                fillColor: "#e67e22",
-                fillOpacity: 0.6,
-                className: 'highlighted-polygon'
-            }).addTo(selectionLayer);
-            
-            L.marker(closestWatermark.center, {
-                icon: L.divIcon({ 
-                    className: 'nano-label-fixed', 
-                    html: closestWatermark.code, 
-                    iconSize: [50, 15] 
-                })
-            }).addTo(selectionLayer);
-            
-        } else {
-            // FALLBACK: Calcular nano manualmente
-            console.log("Calculando nano manualmente (fallback)");
-            
-            // Encontrar micro primero
-            const closestMicro = findClosestWatermark(e.latlng, microWatermarkCache, 0.01);
-            
-            if (closestMicro) {
-                // Calcular índices nano dentro de esta micro
-                const indices = calculateNanoIndicesFromPoint(
-                    e.latlng.lat, e.latlng.lng, 
-                    hC[0].feature, 
-                    closestMicro
-                );
-                
-                // Generar código nano
-                const nanoCode = generateNanoCode(indices.nix, indices.niy, indices.microIx, indices.microIy);
-                finalCode += `-${closestMicro.code}-${nanoCode}`;
-                
-                // Calcular bounds nano
-                const coords = hC[0].feature.geometry.coordinates[0];
-                const nRect = [
+            closestWatermark = {
+                center: nanoCenter,
+                code: nanoCode,
+                bounds: [
                     getPointInGrid(coords, indices.microIx + indices.nix/NANO_RES, indices.microIy + indices.niy/NANO_RES, 24, 24),
                     getPointInGrid(coords, indices.microIx + (indices.nix+1)/NANO_RES, indices.microIy + indices.niy/NANO_RES, 24, 24),
                     getPointInGrid(coords, indices.microIx + (indices.nix+1)/NANO_RES, indices.microIy + (indices.niy+1)/NANO_RES, 24, 24),
                     getPointInGrid(coords, indices.microIx + indices.nix/NANO_RES, indices.microIy + (indices.niy+1)/NANO_RES, 24, 24)
-                ];
-                
-                const nanoCenter = getPointInGrid(coords, 
-                    indices.microIx + (indices.nix + 0.5)/NANO_RES,
-                    indices.microIy + (indices.niy + 0.5)/NANO_RES,
-                    24, 24
-                );
-                
-                // Mostrar selección
-                L.polygon(nRect, {
-                    color: "#e67e22", 
-                    weight: 2, 
-                    fillColor: "#e67e22",
-                    fillOpacity: 0.6,
-                    className: 'highlighted-polygon'
-                }).addTo(selectionLayer);
-                
-                L.marker(nanoCenter, {
-                    icon: L.divIcon({ 
-                        className: 'nano-label-fixed', 
-                        html: nanoCode, 
-                        iconSize: [50, 15] 
-                    })
-                }).addTo(selectionLayer);
-                
-                console.log(`Nano calculado: ${nanoCode}, índices: ${indices.nix},${indices.niy}`);
-            }
+                ],
+                indices: indices
+            };
         }
     }
+    
+    // CONSTRUIR CÓDIGO COMPLETO
+    finalCode += `-${microCode}-${nanoCode}`;
+    console.log(`Código completo: ${finalCode}, Micro: ${microCode}, Nano: ${nanoCode}`);
+    
+    // Mostrar selección NANO
+    if (closestWatermark) {
+        L.polygon(closestWatermark.bounds, {
+            color: "#e67e22", 
+            weight: 2, 
+            fillColor: "#e67e22",
+            fillOpacity: 0.6,
+            className: 'highlighted-polygon'
+        }).addTo(selectionLayer);
+        
+        L.marker(closestWatermark.center, {
+            icon: L.divIcon({ 
+                className: 'nano-label-fixed', 
+                html: nanoCode, 
+                iconSize: [50, 15] 
+            })
+        }).addTo(selectionLayer);
+    }
+    
+    // También mostrar bordes MICRO para referencia
+    if (microWatermark) {
+        L.polygon(microWatermark.bounds, {
+            color: "#3498db", 
+            weight: 2, 
+            fillColor: "transparent",
+            dashArray: "5, 5",
+            opacity: 0.5
+        }).addTo(selectionLayer);
+        
+        L.marker(microWatermark.center, {
+            icon: L.divIcon({ 
+                className: 'micro-label-fixed', 
+                html: microCode, 
+                iconSize: [45, 15] 
+            })
+        }).addTo(selectionLayer);
+    }
+}
 
     console.log(`Título final: ${titulo}, Código: ${finalCode}`);
     
@@ -671,3 +680,4 @@ updateGridAndLabels();
 </script>
 </body>
 </html>
+
