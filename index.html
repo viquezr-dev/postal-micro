@@ -111,7 +111,7 @@ function getCacheKey(featureId, level, i, j, ni = null, nj = null) {
     return `f${featureId}-${level}-${i}-${j}`;
 }
 
-// Función mejorada para encontrar watermark más cercano
+// Función para encontrar watermark más cercano
 function findClosestWatermark(clickLatLng, watermarkCache, maxDistance = 0.001) {
     let closestWatermark = null;
     let minDistance = Infinity;
@@ -359,7 +359,7 @@ $.getJSON("estafetas.geojson", d => {
 $.getJSON("estafetasl.geojson", d => L.geoJSON(d, {style: {color: "#e74c3c", weight: 2}}).addTo(rutasLayer));
 $.getJSON("estafetasp.geojson", d => L.geoJSON(d, {pointToLayer:(f,ll)=>L.circleMarker(ll,{radius:5, color:"#27ae60", fillColor:"#2ecc71", fillOpacity:1})}).addTo(estafetasPointsLayer));
 
-// EVENTO CLIC - VERSIÓN CORREGIDA
+// EVENTO CLIC
 mymap.on("click", function (e) {
     console.log("=== CLIC EN MAPA ===");
     console.log("Coordenadas:", e.latlng.lat.toFixed(6), e.latlng.lng.toFixed(6));
@@ -428,13 +428,12 @@ mymap.on("click", function (e) {
         }
         
     } else {
-        // NIVEL NANO - VERSIÓN CORREGIDA
+        // NIVEL NANO 
         titulo = "CÓDIGO POSTAL";
-        
         // Siempre calcular desde el punto clickeado
         const indices = calculateNanoIndicesFromPoint(e.latlng.lat, e.latlng.lng, hC[0].feature);
         
-         // Obtener códigos
+        // Obtener códigos
         const microCode = getMicroCodeFromIndices(indices.microIx, indices.microIy);
         const nanoCode = generateNanoCode(indices.nix, indices.niy, indices.microIx, indices.microIy);
         
@@ -443,7 +442,7 @@ mymap.on("click", function (e) {
         
         const coords = hC[0].feature.geometry.coordinates[0];
         
-        // Mostrar celda NANO
+        // Calcular bounds del cuadro nano
         const nanoBounds = [
             getPointInGrid(coords, indices.microIx + indices.nix/NANO_RES, indices.microIy + indices.niy/NANO_RES, 24, 24),
             getPointInGrid(coords, indices.microIx + (indices.nix+1)/NANO_RES, indices.microIy + indices.niy/NANO_RES, 24, 24),
@@ -457,53 +456,39 @@ mymap.on("click", function (e) {
             24, 24
         );
         
-        // Polígono de selección NANO - CON MÁS OPACIDAD Y SIN RELLENO SÓLIDO
+        // CUADRO NANO CON BORDE GRUESO Y RELLENO SEMITRANSPARENTE
         L.polygon(nanoBounds, {
-            color: "#2980b9", 
-            weight: 3, 
-            fillColor: "#2980b9",
-            fillOpacity: 0.3,  // REDUCIDA PARA VER MEJOR EL CUADRO
+            color: "#1a73e8", 
+            weight: 4,  // BORDE MÁS GRUESO
+            fillColor: "#1a73e8",
+            fillOpacity: 0.2,  // BAJA OPACIDAD PARA VER MEJOR
+            opacity: 0.9,
             className: 'highlighted-polygon'
         }).addTo(selectionLayer);
         
-        // Marcador de selección NANO - MÁS PEQUEÑO Y TRANSPARENTE
-        L.marker(nanoCenter, {
-            icon: L.divIcon({ 
-                className: 'nano-selection-label', 
-                html: `<div style="background: rgba(255,255,255,0.9); color: #2980b9; padding: 2px 4px; border-radius: 3px; border: 2px solid #2980b9; font-weight: bold; font-size: 10px;">${nanoCode}</div>`, 
-                iconSize: [40, 20],
-                iconAnchor: [20, 10]
-            }),
-            zIndexOffset: 1000
-        }).addTo(selectionLayer);
+        // SOLO AGREGAR MARCADOR SI NO HAY UNO CERCA
+        let labelExists = false;
+        labelLayer.eachLayer(function(layer) {
+            if (layer instanceof L.Marker) {
+                const markerLatLng = layer.getLatLng();
+                const distance = markerLatLng.distanceTo(nanoCenter);
+                if (distance < 10) {
+                    labelExists = true;
+                }
+            }
+        });
         
-        // Mostrar borde MICRO para referencia
-        const microBounds = [
-            getPointInGrid(coords, indices.microIx, indices.microIy, 24, 24),
-            getPointInGrid(coords, indices.microIx+1, indices.microIy, 24, 24),
-            getPointInGrid(coords, indices.microIx+1, indices.microIy+1, 24, 24),
-            getPointInGrid(coords, indices.microIx, indices.microIy+1, 24, 24)
-        ];
-        
-        const microCenter = getPointInGrid(coords, indices.microIx + 0.5, indices.microIy + 0.5, 24, 24);
-        
-        L.polygon(microBounds, {
-            color: "#3498db", 
-            weight: 2, 
-            fillColor: "transparent",
-            dashArray: "5, 5",
-            opacity: 0.4
-        }).addTo(selectionLayer);
-        
-        // Marcador micro para referencia - MÁS TRANSPARENTE
-        L.marker(microCenter, {
-            icon: L.divIcon({ 
-                className: 'micro-selection-label', 
-                html: `<div style="background: rgba(255,255,255,0.8); color: #3498db; padding: 1px 3px; border-radius: 2px; border: 1px solid #3498db; font-size: 8px;">${microCode}</div>`, 
-                iconSize: [35, 12],
-                iconAnchor: [17, 6]
-            })
-        }).addTo(selectionLayer);
+        if (!labelExists) {
+            L.marker(nanoCenter, {
+                icon: L.divIcon({ 
+                    className: 'nano-selection-label', 
+                    html: `<div style="background: white; color: #1a73e8; padding: 2px 5px; border-radius: 3px; border: 2px solid #1a73e8; font-weight: bold; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">${nanoCode}</div>`, 
+                    iconSize: [40, 20],
+                    iconAnchor: [20, 10]
+                }),
+                zIndexOffset: 1000
+            }).addTo(selectionLayer);
+        }
         
         console.log(`Nano calculado: ${finalCode}`);
     }
@@ -529,7 +514,7 @@ mymap.on("click", function (e) {
         .openOn(mymap);
 });
 
-// BUSCADOR MEJORADO
+// BUSCADOR
 document.getElementById('search-btn').addEventListener('click', () => {
     const code = document.getElementById('search-input').value.trim().toUpperCase();
     if (!code || !rawCuadricula) return;
@@ -657,4 +642,5 @@ updateGridAndLabels();
 </script>
 </body>
 </html>
+
 
