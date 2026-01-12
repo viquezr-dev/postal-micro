@@ -434,7 +434,7 @@ mymap.on("click", function (e) {
         // Siempre calcular desde el punto clickeado
         const indices = calculateNanoIndicesFromPoint(e.latlng.lat, e.latlng.lng, hC[0].feature);
         
-        // Obtener códigos
+         // Obtener códigos
         const microCode = getMicroCodeFromIndices(indices.microIx, indices.microIy);
         const nanoCode = generateNanoCode(indices.nix, indices.niy, indices.microIx, indices.microIy);
         
@@ -457,22 +457,22 @@ mymap.on("click", function (e) {
             24, 24
         );
         
-        // Polígono de selección NANO (azul)
+        // Polígono de selección NANO - CON MÁS OPACIDAD Y SIN RELLENO SÓLIDO
         L.polygon(nanoBounds, {
             color: "#2980b9", 
             weight: 3, 
             fillColor: "#2980b9",
-            fillOpacity: 0.6,
+            fillOpacity: 0.3,  // REDUCIDA PARA VER MEJOR EL CUADRO
             className: 'highlighted-polygon'
         }).addTo(selectionLayer);
         
-        // Marcador de selección NANO - CON FONDO BLANCO PARA DIFERENCIARSE
+        // Marcador de selección NANO - MÁS PEQUEÑO Y TRANSPARENTE
         L.marker(nanoCenter, {
             icon: L.divIcon({ 
                 className: 'nano-selection-label', 
-                html: `<div style="background: white; color: #2980b9; padding: 3px 6px; border-radius: 4px; border: 2px solid #2980b9; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2);">${nanoCode}</div>`, 
-                iconSize: [45, 25],
-                iconAnchor: [22, 12]
+                html: `<div style="background: rgba(255,255,255,0.9); color: #2980b9; padding: 2px 4px; border-radius: 3px; border: 2px solid #2980b9; font-weight: bold; font-size: 10px;">${nanoCode}</div>`, 
+                iconSize: [40, 20],
+                iconAnchor: [20, 10]
             }),
             zIndexOffset: 1000
         }).addTo(selectionLayer);
@@ -495,13 +495,13 @@ mymap.on("click", function (e) {
             opacity: 0.4
         }).addTo(selectionLayer);
         
-        // Marcador micro para referencia
+        // Marcador micro para referencia - MÁS TRANSPARENTE
         L.marker(microCenter, {
             icon: L.divIcon({ 
                 className: 'micro-selection-label', 
-                html: `<div style="background: rgba(255,255,255,0.8); color: #3498db; padding: 2px 4px; border-radius: 3px; border: 1px solid #3498db; font-size: 9px;">${microCode}</div>`, 
-                iconSize: [40, 15],
-                iconAnchor: [20, 7]
+                html: `<div style="background: rgba(255,255,255,0.8); color: #3498db; padding: 1px 3px; border-radius: 2px; border: 1px solid #3498db; font-size: 8px;">${microCode}</div>`, 
+                iconSize: [35, 12],
+                iconAnchor: [17, 6]
             })
         }).addTo(selectionLayer);
         
@@ -657,3 +657,4 @@ updateGridAndLabels();
 </script>
 </body>
 </html>
+
