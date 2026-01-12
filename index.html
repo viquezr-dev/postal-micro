@@ -56,6 +56,9 @@
         .ruta-popup .leaflet-popup-tip {
             background: #dc3545;
         }
+        .grid-macro { stroke-dasharray: none; }
+        .grid-micro { stroke-dasharray: 5, 5; }
+        .grid-nano { stroke-dasharray: 2, 3; }
     
     </style>
 </head>
@@ -299,33 +302,71 @@ function updateGridAndLabels() {
             }
         }
 
-        // REJILLA DINÁMICA
-        if (z >= 14 && mymap.hasLayer(gridLayer)) {
-            // Líneas principales MICRO
-            for (let i = 0; i <= 24; i++) {
-                let v = [], h = [];
-                for(let j=0; j<=24; j++) {
-                    v.push(getPointInGrid(coords, i, j, 24, 24));
-                    h.push(getPointInGrid(coords, j, i, 24, 24));
+        // REJILLA DINÁMICA MEJORADA
+        if (z >= 10 && mymap.hasLayer(gridLayer)) {
+            if (z >= 10 && z < 14) {
+                // SÓLO LÍNEAS PRINCIPALES DE MACRO
+                L.polygon(coords, {
+                    color: "#1a73e8",
+                    weight: 2,
+                    opacity: 0.6,
+                    fillOpacity: 0,
+                    className: 'grid-macro'
+                }).addTo(gridLayer);
+                
+            } else if (z >= 14 && z < 17) {
+                // LÍNEAS MICRO - más gruesas y visibles
+                for (let i = 0; i <= 24; i++) {
+                    let v = [], h = [];
+                    for(let j=0; j<=24; j++) {
+                        v.push(getPointInGrid(coords, i, j, 24, 24));
+                        h.push(getPointInGrid(coords, j, i, 24, 24));
+                    }
+                    
+                    // Líneas principales cada 6 celdas (1/4 del grid)
+                    if (i % 6 === 0) {
+                        L.polyline(v, {
+                            color: "#3498db",
+                            weight: 1.5,
+                            opacity: 0.7,
+                            className: 'grid-micro'
+                        }).addTo(gridLayer);
+                        L.polyline(h, {
+                            color: "#3498db",
+                            weight: 1.5,
+                            opacity: 0.7,
+                            className: 'grid-micro'
+                        }).addTo(gridLayer);
+                    } else {
+                        // Líneas secundarias
+                        L.polyline(v, {
+                            color: "#3498db",
+                            weight: 0.8,
+                            opacity: 0.4,
+                            dashArray: '5, 5',
+                            className: 'grid-micro'
+                        }).addTo(gridLayer);
+                        L.polyline(h, {
+                            color: "#3498db",
+                            weight: 0.8,
+                            opacity: 0.4,
+                            dashArray: '5, 5',
+                            className: 'grid-micro'
+                        }).addTo(gridLayer);
+                    }
                 }
                 
-                let weight, opacity, color;
-                if (z >= 14 && z < 17) {
-                    weight = 1.8;
-                    opacity = 0.7;
-                    color = '#2980b9';
-                } else {
-                    weight = 1.0;
-                    opacity = 0.6;
-                    color = '#3498db';
-                }
+                // Borde del macro
+                L.polygon(coords, {
+                    color: "#1a73e8",
+                    weight: 2,
+                    opacity: 0.8,
+                    fillOpacity: 0,
+                    className: 'grid-macro'
+                }).addTo(gridLayer);
                 
-                L.polyline(v, {color: color, weight: weight, opacity: opacity}).addTo(gridLayer);
-                L.polyline(h, {color: color, weight: weight, opacity: opacity}).addTo(gridLayer);
-            }
-            
-            // Líneas NANO
-            if (z >= 17) {
+            } else if (z >= 17) {
+                // LÍNEAS NANO - muy finas
                 for (let i = 0; i < 24; i++) {
                     for (let j = 0; j < 24; j++) {
                         const topLeft = getPointInGrid(coords, i, j, 24, 24);
@@ -333,45 +374,82 @@ function updateGridAndLabels() {
                         const bottomRight = getPointInGrid(coords, i+1, j+1, 24, 24);
                         const bottomLeft = getPointInGrid(coords, i, j+1, 24, 24);
                         
-                        // Líneas verticales NANO
+                        // Líneas verticales NANO (solo cada 5 líneas para no saturar)
                         for (let ni = 1; ni < NANO_RES; ni++) {
-                            const t = ni / NANO_RES;
-                            const p1 = [
-                                (1-t) * topLeft[0] + t * topRight[0],
-                                (1-t) * topLeft[1] + t * topRight[1]
-                            ];
-                            const p2 = [
-                                (1-t) * bottomLeft[0] + t * bottomRight[0],
-                                (1-t) * bottomLeft[1] + t * bottomRight[1]
-                            ];
-                            L.polyline([p1, p2], {
-                                color: '#2980b9',
-                                weight: 0.6,
-                                opacity: 0.4,
-                                dashArray: '3,2'
-                            }).addTo(gridLayer);
+                            if (ni % 5 === 0) {
+                                const t = ni / NANO_RES;
+                                const p1 = [
+                                    (1-t) * topLeft[0] + t * topRight[0],
+                                    (1-t) * topLeft[1] + t * topRight[1]
+                                ];
+                                const p2 = [
+                                    (1-t) * bottomLeft[0] + t * bottomRight[0],
+                                    (1-t) * bottomLeft[1] + t * bottomRight[1]
+                                ];
+                                L.polyline([p1, p2], {
+                                    color: "#2980b9",
+                                    weight: 0.4,
+                                    opacity: 0.3,
+                                    dashArray: '2, 3',
+                                    className: 'grid-nano'
+                                }).addTo(gridLayer);
+                            }
                         }
                         
-                        // Líneas horizontales NANO
+                        // Líneas horizontales NANO (solo cada 5 líneas)
                         for (let nj = 1; nj < NANO_RES; nj++) {
-                            const t = nj / NANO_RES;
-                            const p1 = [
-                                (1-t) * topLeft[0] + t * bottomLeft[0],
-                                (1-t) * topLeft[1] + t * bottomLeft[1]
-                            ];
-                            const p2 = [
-                                (1-t) * topRight[0] + t * bottomRight[0],
-                                (1-t) * topRight[1] + t * bottomRight[1]
-                            ];
-                            L.polyline([p1, p2], {
-                                color: '#2980b9',
-                                weight: 0.6,
-                                opacity: 0.4,
-                                dashArray: '3,2'
-                            }).addTo(gridLayer);
+                            if (nj % 5 === 0) {
+                                const t = nj / NANO_RES;
+                                const p1 = [
+                                    (1-t) * topLeft[0] + t * bottomLeft[0],
+                                    (1-t) * topLeft[1] + t * bottomLeft[1]
+                                ];
+                                const p2 = [
+                                    (1-t) * topRight[0] + t * bottomRight[0],
+                                    (1-t) * topRight[1] + t * bottomRight[1]
+                                ];
+                                L.polyline([p1, p2], {
+                                    color: "#2980b9",
+                                    weight: 0.4,
+                                    opacity: 0.3,
+                                    dashArray: '2, 3',
+                                    className: 'grid-nano'
+                                }).addTo(gridLayer);
+                            }
                         }
                     }
                 }
+                
+                // Líneas MICRO visibles en nivel nano (más gruesas)
+                for (let i = 0; i <= 24; i++) {
+                    let v = [], h = [];
+                    for(let j=0; j<=24; j++) {
+                        v.push(getPointInGrid(coords, i, j, 24, 24));
+                        h.push(getPointInGrid(coords, j, i, 24, 24));
+                    }
+                    
+                    L.polyline(v, {
+                        color: "#3498db",
+                        weight: 1.0,
+                        opacity: 0.6,
+                        className: 'grid-micro'
+                    }).addTo(gridLayer);
+                    L.polyline(h, {
+                        color: "#3498db",
+                        weight: 1.0,
+                        opacity: 0.6,
+                        className: 'grid-micro'
+                    }).addTo(gridLayer);
+                }
+                
+                // Borde del macro
+                L.polygon(coords, {
+                    color: "#1a73e8",
+                    weight: 2,
+                    opacity: 0.8,
+                    fillOpacity: 0,
+                    className: 'grid-macro'
+                }).addTo(gridLayer);
             }
         }
     });
@@ -389,16 +467,25 @@ $.getJSON("estafetas.geojson", d => {
 });
 $.getJSON("estafetasl.geojson", d => { 
     rutasData = d;
-    L.geoJSON(d, {style: {color: "#e74c3c", weight: 2}}).addTo(rutasLayer);
+    L.geoJSON(d, {
+        style: function(feature) {
+            return {
+                color: "#e74c3c", 
+                weight: 2,
+                opacity: 0.8
+            };
+        }
+    }).addTo(rutasLayer);
 });
 $.getJSON("estafetasp.geojson", d => { 
     estafetasData = d;
     L.geoJSON(d, {
         pointToLayer: (f, ll) => L.circleMarker(ll, {
-            radius: 5, 
+            radius: 6, 
             color: "#27ae60", 
             fillColor: "#2ecc71", 
-            fillOpacity: 1
+            fillOpacity: 0.8,
+            weight: 2
         })
     }).addTo(estafetasPointsLayer);
 });
@@ -413,29 +500,39 @@ function restoreHiddenLabels() {
     hiddenLabels = [];
 }
 
-// FUNCIÓN PARA VERIFICAR CLIC EN RUTAS
+// FUNCIÓN MEJORADA PARA VERIFICAR CLIC EN RUTAS
 function verificarClicEnRutas(latlng) {
     if (!rutasData) return null;
     
-    // Verificar si el clic está cerca de alguna ruta (línea)
+    // Usar leaflet-pip para detectar si el clic está en alguna ruta
+    const features = L.geoJSON(rutasData).getLayers();
     let rutaMasCercana = null;
-    let distanciaMinima = 0.001; // Aproximadamente 100 metros en grados
+    let distanciaMinima = 0.0005; // ~50 metros en grados
     
-    rutasData.features.forEach(feature => {
-        if (feature.geometry.type === 'LineString') {
-            const coordinates = feature.geometry.coordinates;
+    // Primero intentar con pointInLayer
+    const punto = [latlng.lng, latlng.lat];
+    const rutasEnPunto = leafletPip.pointInLayer(punto, L.geoJSON(rutasData));
+    
+    if (rutasEnPunto.length > 0) {
+        return rutasEnPunto[0].feature;
+    }
+    
+    // Si no encuentra con pointInLayer, buscar por proximidad
+    features.forEach(layer => {
+        if (layer instanceof L.Polyline) {
+            const latlngs = layer.getLatLngs();
             
-            // Verificar distancia a cada segmento de la línea
-            for (let i = 0; i < coordinates.length - 1; i++) {
-                const p1 = {lat: coordinates[i][1], lng: coordinates[i][0]};
-                const p2 = {lat: coordinates[i+1][1], lng: coordinates[i+1][0]};
+            // Para cada segmento de la línea
+            for (let i = 0; i < latlngs.length - 1; i++) {
+                const p1 = latlngs[i];
+                const p2 = latlngs[i + 1];
                 
-                // Calcular distancia del punto a la línea
-                const distancia = distanciaPuntoALinea(latlng, p1, p2);
+                // Calcular distancia del punto al segmento
+                const distancia = distanciaPuntoASegmento(latlng, p1, p2);
                 
                 if (distancia < distanciaMinima) {
                     distanciaMinima = distancia;
-                    rutaMasCercana = feature;
+                    rutaMasCercana = layer.feature;
                 }
             }
         }
@@ -448,19 +545,27 @@ function verificarClicEnRutas(latlng) {
 function verificarClicEnEstafetas(latlng) {
     if (!estafetasData) return null;
     
+    const punto = [latlng.lng, latlng.lat];
+    const estafetasEnPunto = leafletPip.pointInLayer(punto, L.geoJSON(estafetasData));
+    
+    if (estafetasEnPunto.length > 0) {
+        return estafetasEnPunto[0].feature;
+    }
+    
+    // También verificar por proximidad
     let estafetaMasCercana = null;
-    let distanciaMinima = 0.0005; // Aproximadamente 50 metros en grados
+    let distanciaMinima = 0.0003; // ~30 metros en grados
     
     estafetasData.features.forEach(feature => {
         if (feature.geometry.type === 'Point') {
-            const punto = {
+            const puntoEstafeta = {
                 lat: feature.geometry.coordinates[1],
                 lng: feature.geometry.coordinates[0]
             };
             
             const distancia = Math.sqrt(
-                Math.pow(latlng.lat - punto.lat, 2) + 
-                Math.pow(latlng.lng - punto.lng, 2)
+                Math.pow(latlng.lat - puntoEstafeta.lat, 2) + 
+                Math.pow(latlng.lng - puntoEstafeta.lng, 2)
             );
             
             if (distancia < distanciaMinima) {
@@ -473,12 +578,12 @@ function verificarClicEnEstafetas(latlng) {
     return estafetaMasCercana;
 }
 
-// Función para calcular distancia de punto a línea
-function distanciaPuntoALinea(p, a, b) {
-    const A = p.lat - a.lat;
-    const B = p.lng - a.lng;
-    const C = b.lat - a.lat;
-    const D = b.lng - a.lng;
+// Función para calcular distancia de punto a segmento
+function distanciaPuntoASegmento(p, a, b) {
+    const A = p.lng - a.lng;
+    const B = p.lat - a.lat;
+    const C = b.lng - a.lng;
+    const D = b.lat - a.lat;
     
     const dot = A * C + B * D;
     const lenSq = C * C + D * D;
@@ -505,7 +610,7 @@ function distanciaPuntoALinea(p, a, b) {
     return Math.sqrt(dx * dx + dy * dy);
 }
 
-// EVENTO CLIC CORREGIDO
+// EVENTO CLIC MEJORADO
 mymap.on("click", function (e) {
     console.log("=== CLIC EN MAPA ===");
     console.log("Coordenadas:", e.latlng.lat.toFixed(6), e.latlng.lng.toFixed(6));
@@ -515,23 +620,31 @@ mymap.on("click", function (e) {
     restoreHiddenLabels();
     hiddenLabels = [];
     
+    // Verificar si las capas están visibles
+    const rutasVisibles = mymap.hasLayer(rutasLayer);
+    const estafetasVisibles = mymap.hasLayer(estafetasPointsLayer);
+    
+    if (estafetasVisibles) {
+        // Primero verificar si se hizo clic en una estafeta
+        const estafetaClic = verificarClicEnEstafetas(e.latlng);
+        if (estafetaClic) {
+            mostrarPopupEstafeta(e.latlng, estafetaClic);
+            return;
+        }
+    }
+    
+    if (rutasVisibles) {
+        // Luego verificar si se hizo clic en una ruta
+        const rutaClic = verificarClicEnRutas(e.latlng);
+        if (rutaClic) {
+            mostrarPopupRuta(e.latlng, rutaClic);
+            return;
+        }
+    }
+    
+    // Si no es estafeta ni ruta, o las capas no están visibles
     if (!rawCuadricula || !rawZonas) return;
     
-    // Primero verificar si se hizo clic en una estafeta
-    const estafetaClic = verificarClicEnEstafetas(e.latlng);
-    if (estafetaClic) {
-        mostrarPopupEstafeta(e.latlng, estafetaClic);
-        return;
-    }
-    
-    // Luego verificar si se hizo clic en una ruta
-    const rutaClic = verificarClicEnRutas(e.latlng);
-    if (rutaClic) {
-        mostrarPopupRuta(e.latlng, rutaClic);
-        return;
-    }
-    
-    // Si no es estafeta ni ruta, verificar en zonas o cuadrícula
     const hZ = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawZonas));
     const hC = leafletPip.pointInLayer([e.latlng.lng, e.latlng.lat], L.geoJSON(rawCuadricula));
 
@@ -592,7 +705,7 @@ mymap.on("click", function (e) {
         }
         
     } else {
-        // NIVEL NANO - CORREGIDO
+        // NIVEL NANO
         titulo = "CÓDIGO POSTAL";
         
         // Buscar en cache nano primero
@@ -612,7 +725,7 @@ mymap.on("click", function (e) {
             // Código completo
             finalCode += `-${microCode}-${closestWatermark.code}`;
             
-            // MOSTRAR CUADRO NANO (SE SOMBREA)
+            // MOSTRAR CUADRO NANO
             L.polygon(closestWatermark.bounds, {
                 color: "#2980b9", 
                 weight: 3, 
@@ -628,7 +741,7 @@ mymap.on("click", function (e) {
                     const distance = markerLatLng.distanceTo(closestWatermark.center);
                     if (distance < 5) {
                         layer.setOpacity(0);
-                        hiddenLabels.push(layer); // Guardar referencia
+                        hiddenLabels.push(layer);
                     }
                 }
             });
@@ -735,14 +848,14 @@ mymap.on("click", function (e) {
     });
 });
 
-// FUNCIÓN PARA MOSTRAR POPUP DE ESTAFETA
+// FUNCIÓN MEJORADA PARA MOSTRAR POPUP DE ESTAFETA
 function mostrarPopupEstafeta(latlng, estafeta) {
-    const propiedades = estafeta.properties || {};
-    const nombre = propiedades.nombre || propiedades.name || "Estafeta Postal";
-    const codigo = propiedades.codigo || propiedades.id || "N/A";
-    const direccion = propiedades.direccion || propiedades.address || "Dirección no disponible";
-    const horario = propiedades.horario || propiedades.hours || "Horario no disponible";
-    const telefono = propiedades.telefono || propiedades.phone || "Teléfono no disponible";
+    const p = estafeta.properties || {};
+    const nombre = p.ESTAF_NAME || p.nombre || p.name || "Estafeta Postal";
+    const codigo = p.ESTAF_CODE || p.codigo || p.id || "N/A";
+    const ruta = p.RUTA || "N/A";
+    const nivel = p.VM_LEVEL || "N/A";
+    const fid = p.fid !== undefined ? p.fid : "N/A";
     
     const popupOffset = [0, -60];
     const popupLatLng = L.latLng(latlng.lat + 0.0004, latlng.lng);
@@ -750,19 +863,22 @@ function mostrarPopupEstafeta(latlng, estafeta) {
     const popup = L.popup({offset: popupOffset, className: 'estafeta-popup'})
         .setLatLng(popupLatLng)
         .setContent(`
-            <div style="text-align:center; padding: 10px; max-width: 250px;">
-                <div style="font-size: 16px; color: #28a745; margin-bottom: 5px; font-weight: bold;">
+            <div style="text-align:center; padding: 10px; max-width: 280px;">
+                <div style="font-size: 16px; color: #28a745; margin-bottom: 8px; font-weight: bold;">
                     📮 ${nombre}
                 </div>
-                <div style="font-size: 12px; color: #155724; margin-bottom: 10px;">
+                <div style="font-size: 12px; color: #155724; margin-bottom: 12px; text-align: left; line-height: 1.4;">
+                    <strong>ID:</strong> ${fid}<br>
                     <strong>Código:</strong> ${codigo}<br>
-                    <strong>Dirección:</strong> ${direccion}<br>
-                    <strong>Horario:</strong> ${horario}<br>
-                    <strong>Teléfono:</strong> ${telefono}
+                    <strong>Ruta:</strong> ${ruta}<br>
+                    <strong>Nivel VM:</strong> ${nivel}
+                </div>
+                <div style="font-size: 11px; color: #0c5460; margin-bottom: 12px; font-style: italic;">
+                    GPS: ${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}
                 </div>
                 <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
                     <button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${latlng.lat},${latlng.lng}')">📍 MAPS</button>
-                    <button class="btn-ws" onclick="window.open('https://wa.me/?text=${encodeURIComponent(`📍 Estafeta Postal: ${nombre}\nCódigo: ${codigo}\nDirección: ${direccion}\nGPS: ${latlng.lat.toFixed(6)},${latlng.lng.toFixed(6)}`)}')">💬 WS</button>
+                    <button class="btn-ws" onclick="window.open('https://wa.me/?text=${encodeURIComponent(`📍 Estafeta Postal: ${nombre}\nCódigo: ${codigo}\nRuta: ${ruta}\nGPS: ${latlng.lat.toFixed(6)},${latlng.lng.toFixed(6)}`)}')">💬 WS</button>
                 </div>
             </div>
         `)
@@ -783,13 +899,13 @@ function mostrarPopupEstafeta(latlng, estafeta) {
     });
 }
 
-// FUNCIÓN PARA MOSTRAR POPUP DE RUTA
+// FUNCIÓN MEJORADA PARA MOSTRAR POPUP DE RUTA
 function mostrarPopupRuta(latlng, ruta) {
-    const propiedades = ruta.properties || {};
-    const nombre = propiedades.nombre || propiedades.name || "Ruta Postal";
-    const codigo = propiedades.codigo || propiedades.id || "N/A";
-    const descripcion = propiedades.descripcion || propiedades.description || "Descripción no disponible";
-    const distancia = propiedades.distancia || propiedades.distance || "Distancia no disponible";
+    const p = ruta.properties || {};
+    const rutaNombre = p.RUTA || p.nombre || p.name || "Ruta Postal";
+    const tramo = p.tramo !== undefined ? p.tramo : "N/A";
+    const distancia = p.distancia !== undefined ? `${p.distancia} km` : "N/A";
+    const fid = p.fid !== undefined ? p.fid : "N/A";
     
     const popupOffset = [0, -60];
     const popupLatLng = L.latLng(latlng.lat + 0.0004, latlng.lng);
@@ -797,18 +913,19 @@ function mostrarPopupRuta(latlng, ruta) {
     const popup = L.popup({offset: popupOffset, className: 'ruta-popup'})
         .setLatLng(popupLatLng)
         .setContent(`
-            <div style="text-align:center; padding: 10px; max-width: 250px;">
-                <div style="font-size: 16px; color: #dc3545; margin-bottom: 5px; font-weight: bold;">
-                    🚚 ${nombre}
+            <div style="text-align:center; padding: 10px; max-width: 280px;">
+                <div style="font-size: 16px; color: #dc3545; margin-bottom: 8px; font-weight: bold;">
+                    🚚 Ruta: ${rutaNombre}
                 </div>
-                <div style="font-size: 12px; color: #721c24; margin-bottom: 10px;">
-                    <strong>Código:</strong> ${codigo}<br>
-                    <strong>Descripción:</strong> ${descripcion}<br>
-                    <strong>Distancia:</strong> ${distancia}
+                <div style="font-size: 12px; color: #721c24; margin-bottom: 12px; text-align: left; line-height: 1.4;">
+                    <strong>ID:</strong> ${fid}<br>
+                    <strong>Tramo:</strong> ${tramo}<br>
+                    <strong>Distancia:</strong> ${distancia}<br>
+                    <strong>Coordenadas:</strong> ${latlng.lat.toFixed(6)}, ${latlng.lng.toFixed(6)}
                 </div>
                 <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
                     <button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${latlng.lat},${latlng.lng}')">📍 MAPS</button>
-                    <button class="btn-ws" onclick="window.open('https://wa.me/?text=${encodeURIComponent(`📍 Ruta Postal: ${nombre}\nCódigo: ${codigo}\nDescripción: ${descripcion}\nGPS: ${latlng.lat.toFixed(6)},${latlng.lng.toFixed(6)}`)}')">💬 WS</button>
+                    <button class="btn-ws" onclick="window.open('https://wa.me/?text=${encodeURIComponent(`📍 Ruta Postal: ${rutaNombre}\nTramo: ${tramo}\nDistancia: ${distancia}\nGPS: ${latlng.lat.toFixed(6)},${latlng.lng.toFixed(6)}`)}')">💬 WS</button>
                 </div>
             </div>
         `)
@@ -823,6 +940,16 @@ function mostrarPopupRuta(latlng, ruta) {
         fillOpacity: 0.8,
         weight: 3
     }).addTo(selectionLayer);
+    
+    // También resaltar la línea de la ruta
+    if (ruta.geometry && ruta.geometry.type === 'LineString') {
+        const latlngs = ruta.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+        L.polyline(latlngs, {
+            color: "#dc3545",
+            weight: 4,
+            opacity: 0.8
+        }).addTo(selectionLayer);
+    }
     
     popup.on('remove', function() {
         selectionLayer.clearLayers();
