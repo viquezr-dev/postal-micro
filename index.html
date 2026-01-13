@@ -86,10 +86,67 @@
 
 <script>
 const mymap = L.map('mapid').setView([8.50, -80.0], 8);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mymap);
 
-// Capas
-// NO COPIES ESTE CODIGO, DESARROLLADO POR RAUL VIQUEZ....
+// ==============================================
+// MAPAS BASE DISPONIBLES
+// ==============================================
+
+// 1. OpenStreetMap Estándar 
+const osmStandard = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19
+});
+
+// 2. OpenStreetMap Carto (más limpio)
+const osmCarto = L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap, © CartoDB',
+    maxZoom: 19
+});
+
+// 3. OpenTopoMap (para ver relieve)
+const openTopoMap = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors, SRTM | Style: © OpenTopoMap (CC-BY-SA)',
+    maxZoom: 17
+});
+
+// 4. ESRI World Imagery (imágenes satelitales)
+const esriWorldImagery = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri, Maxar, Earthstar Geographics, USDA FSA, USGS, Aerogrid, IGN, IGP, and others',
+    maxZoom: 19
+});
+
+// 5. ESRI World Street Map (calles claras)
+const esriWorldStreet = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '© Esri, DeLorme, HERE, USGS',
+    maxZoom: 19
+});
+
+// 6. Stamen Terrain (con relieve y etiquetas)
+const stamenTerrain = L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/terrain/{z}/{x}/{y}{r}.{ext}', {
+    attribution: '© Stamen Design, © OpenStreetMap contributors',
+    subdomains: 'abcd',
+    maxZoom: 18,
+    ext: 'png'
+});
+
+// 7. CartoDB Dark Matter (tema oscuro)
+const cartoDark = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap, © CartoDB',
+    maxZoom: 19
+});
+
+// 8. CartoDB Voyager (estilo colorido)
+const cartoVoyager = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap, © CartoDB',
+    maxZoom: 19
+});
+
+// Capa base por defecto
+osmStandard.addTo(mymap);
+
+// ==============================================
+// CAPAS DE DATOS-----DESARROLLADO POR RAUL VIQUEZ, POR FAVOR NO TE COPIES DE ESTE CODIGO....
+// ==============================================
 const zonasGeoLayer = L.layerGroup().addTo(mymap);
 const cuadriculaFisicaLayer = L.layerGroup().addTo(mymap);
 const gridLayer = L.layerGroup().addTo(mymap);
@@ -547,7 +604,7 @@ function verificarClicEnZonas(latlng) {
     return null;
 }
 
-// FUNCIÓN COMPLETAMENTE NUEVA PARA DETECTAR ESTAFETAS - POR PROXIMIDAD
+// FUNCIÓN PARA DETECTAR ESTAFETAS - POR PROXIMIDAD
 function verificarClicEnEstafetas(latlng) {
     if (!estafetasData || !mymap.hasLayer(estafetasPointsLayer)) return null;
     
@@ -589,7 +646,7 @@ function verificarClicEnEstafetas(latlng) {
     return null;
 }
 
-// FUNCIÓN COMPLETAMENTE NUEVA PARA DETECTAR RUTAS - MÁS PRECISA
+// FUNCIÓN PARA DETECTAR RUTAS - MÁS PRECISA
 function verificarClicEnRutas(latlng) {
     if (!rutasData || !mymap.hasLayer(rutasLayer)) return null;
     
@@ -647,7 +704,7 @@ function verificarClicEnRutas(latlng) {
     return null;
 }
 
-// Función para calcular distancia de punto a segmento (versión mejorada)
+// Función para calcular distancia de punto a segmento
 function distanciaPuntoASegmento(p, a, b) {
     // Calcular vectores
     const A = p.lng - a.lng;
@@ -658,7 +715,7 @@ function distanciaPuntoASegmento(p, a, b) {
     const dot = A * C + B * D;
     const lenSq = C * C + D * D;
     
-    // Si el segmento tiene longitud cero, calcular distancia al punto a
+    // Si el segmento tiene longitud cero, calcular distancia al punto
     if (lenSq === 0) {
         const dx = p.lng - a.lng;
         const dy = p.lat - a.lat;
@@ -686,7 +743,7 @@ function distanciaPuntoASegmento(p, a, b) {
     return Math.sqrt(dx * dx + dy * dy);
 }
 
-// EVENTO CLIC CORREGIDO - AHORA CON ZONAS SEPARADAS
+// EVENTO CLIC CORREGIDO
 mymap.on("click", function (e) {
     console.log("=== CLIC EN MAPA (ÁREA GENERAL) ===");
     console.log("Coordenadas:", e.latlng.lat.toFixed(6), e.latlng.lng.toFixed(6));
@@ -973,7 +1030,7 @@ function mostrarPopupZona(latlng, zona) {
     });
 }
 
-// FUNCIÓN PARA MOSTRAR POPUP DE ESTAFETA
+// FUNCIÓN MEJORADA PARA MOSTRAR POPUP DE ESTAFETA
 function mostrarPopupEstafeta(latlng, estafeta) {
     const p = estafeta.properties || {};
     const nombre = p.ESTAF_NAME || p.nombre || p.name || "Estafeta Postal";
@@ -1024,7 +1081,7 @@ function mostrarPopupEstafeta(latlng, estafeta) {
     });
 }
 
-// FUNCIÓN PARA MOSTRAR POPUP DE RUTA
+// FUNCIÓN MEJORADA PARA MOSTRAR POPUP DE RUTA
 function mostrarPopupRuta(latlng, ruta) {
     const p = ruta.properties || {};
     const rutaNombre = p.RUTA || p.nombre || p.name || "Ruta Postal";
@@ -1195,8 +1252,26 @@ const LocateControl = L.Control.extend({
 });
 mymap.addControl(new LocateControl());
 
+// ==============================================
 // CONTROL DE CAPAS
-L.control.layers(null, {
+// ==============================================
+
+// Definir los mapas base disponibles
+const mapasBase = {
+    "OpenStreetMap (Estándar)": osmStandard,
+    "OpenStreetMap (Carto)": osmCarto,
+    "OpenTopoMap (Relieve)": openTopoMap,
+    "ESRI World Imagery (Satélite)": esriWorldImagery,
+    "ESRI World Street (Calles)": esriWorldStreet,
+    "Stamen Terrain (Relieve)": stamenTerrain,
+    "CartoDB Dark (Oscuro)": cartoDark,
+    "CartoDB Voyager (Colorido)": cartoVoyager
+    // "Google Maps (Híbrido)": googleHybrid, // Necesita API key
+    // "Mapbox Streets": mapboxStreets // Necesita token
+};
+
+// Definir las capas de datos
+const capasDatos = {
     "Zonas (Referencia)": zonasGeoLayer,
     "Cuadrícula": cuadriculaFisicaLayer,
     "Rutas": rutasLayer,
@@ -1204,7 +1279,13 @@ L.control.layers(null, {
     "Código postal": gridLayer,
     "Selección": selectionLayer,
     "Mi ubicación": userLocationLayer
-}, {collapsed: false}).addTo(mymap);
+};
+
+// Crear control de capas con mapas base y capas de datos
+L.control.layers(mapasBase, capasDatos, {
+    collapsed: false,
+    position: 'topright'
+}).addTo(mymap);
 
 $('#toggle-wm').click(function() {
     labelsEnabled = !labelsEnabled;
@@ -1250,4 +1331,3 @@ updateGridAndLabels();
 </script>
 </body>
 </html>
-
