@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SISTEMA POSTAL DE PANAMÁ - FIX COMPLETO</title>
+    <title>SISTEMA POSTAL DE PANAMÁ</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
@@ -89,6 +89,7 @@ const mymap = L.map('mapid').setView([8.50, -80.0], 8);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mymap);
 
 // Capas
+// NO COPIES ESTE CODIGO, DESARROLLADO POR RAUL VIQUEZ....
 const zonasGeoLayer = L.layerGroup().addTo(mymap);
 const cuadriculaFisicaLayer = L.layerGroup().addTo(mymap);
 const gridLayer = L.layerGroup().addTo(mymap);
@@ -972,7 +973,7 @@ function mostrarPopupZona(latlng, zona) {
     });
 }
 
-// FUNCIÓN MEJORADA PARA MOSTRAR POPUP DE ESTAFETA
+// FUNCIÓN PARA MOSTRAR POPUP DE ESTAFETA
 function mostrarPopupEstafeta(latlng, estafeta) {
     const p = estafeta.properties || {};
     const nombre = p.ESTAF_NAME || p.nombre || p.name || "Estafeta Postal";
@@ -1023,7 +1024,7 @@ function mostrarPopupEstafeta(latlng, estafeta) {
     });
 }
 
-// FUNCIÓN MEJORADA PARA MOSTRAR POPUP DE RUTA
+// FUNCIÓN PARA MOSTRAR POPUP DE RUTA
 function mostrarPopupRuta(latlng, ruta) {
     const p = ruta.properties || {};
     const rutaNombre = p.RUTA || p.nombre || p.name || "Ruta Postal";
@@ -1249,3 +1250,4 @@ updateGridAndLabels();
 </script>
 </body>
 </html>
+
