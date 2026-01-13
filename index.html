@@ -56,6 +56,14 @@
         .ruta-popup .leaflet-popup-tip {
             background: #dc3545;
         }
+        .zona-popup .leaflet-popup-content-wrapper {
+            background: #e9ecef;
+            border: 2px solid #6c757d;
+            border-radius: 8px;
+        }
+        .zona-popup .leaflet-popup-tip {
+            background: #6c757d;
+        }
         .grid-macro { stroke-dasharray: none; }
         .grid-micro { stroke-dasharray: 5, 5; }
         .grid-nano { stroke-dasharray: 2, 3; }
@@ -463,7 +471,16 @@ $.getJSON("cuadricula.geojson", d => {
 });
 $.getJSON("estafetas.geojson", d => { 
     rawZonas = d; 
-    L.geoJSON(d, {style: {color: "#2c3e50", weight: 1.5, fillOpacity: 0.05}}).addTo(zonasGeoLayer); 
+    L.geoJSON(d, {
+        style: {color: "#2c3e50", weight: 1.5, fillOpacity: 0.05},
+        onEachFeature: function(feature, layer) {
+            // Agregar evento de clic para zonas
+            layer.on('click', function(e) {
+                mostrarPopupZona(e.latlng, feature);
+                L.DomEvent.stopPropagation(e); // Detener propagación
+            });
+        }
+    }).addTo(zonasGeoLayer); 
 });
 $.getJSON("estafetasl.geojson", d => { 
     rutasData = d;
@@ -471,9 +488,16 @@ $.getJSON("estafetasl.geojson", d => {
         style: function(feature) {
             return {
                 color: "#e74c3c", 
-                weight: 3,  // Aumentado para mejor detección
+                weight: 4,  // Aumentado para mejor detección
                 opacity: 0.8
             };
+        },
+        onEachFeature: function(feature, layer) {
+            // Agregar evento de clic para rutas
+            layer.on('click', function(e) {
+                mostrarPopupRuta(e.latlng, feature);
+                L.DomEvent.stopPropagation(e); // Detener propagación
+            });
         }
     }).addTo(rutasLayer);
 });
@@ -481,12 +505,19 @@ $.getJSON("estafetasp.geojson", d => {
     estafetasData = d;
     L.geoJSON(d, {
         pointToLayer: (f, ll) => L.circleMarker(ll, {
-            radius: 6, 
+            radius: 8,  // Aumentado el radio
             color: "#27ae60", 
             fillColor: "#2ecc71", 
-            fillOpacity: 0.8,
-            weight: 2
-        })
+            fillOpacity: 0.9,
+            weight: 3
+        }),
+        onEachFeature: function(feature, layer) {
+            // Agregar evento de clic para estafetas
+            layer.on('click', function(e) {
+                mostrarPopupEstafeta(e.latlng, feature);
+                L.DomEvent.stopPropagation(e); // Detener propagación
+            });
+        }
     }).addTo(estafetasPointsLayer);
 });
 
@@ -500,11 +531,68 @@ function restoreHiddenLabels() {
     hiddenLabels = [];
 }
 
+// FUNCIÓN PARA DETECTAR CLIC EN ZONAS (SOLO CUANDO LA CAPA ESTÁ ACTIVA)
+function verificarClicEnZonas(latlng) {
+    if (!rawZonas || !mymap.hasLayer(zonasGeoLayer)) return null;
+    
+    const punto = [latlng.lng, latlng.lat];
+    const zonasEnPunto = leafletPip.pointInLayer(punto, L.geoJSON(rawZonas));
+    
+    if (zonasEnPunto.length > 0) {
+        console.log("Zona encontrada:", zonasEnPunto[0].feature.properties.VM_LEVEL);
+        return zonasEnPunto[0].feature;
+    }
+    
+    return null;
+}
+
+// FUNCIÓN COMPLETAMENTE NUEVA PARA DETECTAR ESTAFETAS - POR PROXIMIDAD
+function verificarClicEnEstafetas(latlng) {
+    if (!estafetasData || !mymap.hasLayer(estafetasPointsLayer)) return null;
+    
+    console.log("Buscando estafetas cerca de:", latlng.lat.toFixed(6), latlng.lng.toFixed(6));
+    
+    let estafetaMasCercana = null;
+    let distanciaMinima = Infinity;
+    const TOLERANCIA_METROS = 15; // 15 metros de tolerancia
+    
+    // Convertir tolerancia de metros a grados (aproximadamente)
+    const toleranceDegrees = TOLERANCIA_METROS / 111000; // 1 grado ≈ 111km
+    
+    estafetasData.features.forEach(feature => {
+        if (feature.geometry.type === 'Point') {
+            const puntoEstafeta = {
+                lat: feature.geometry.coordinates[1],
+                lng: feature.geometry.coordinates[0]
+            };
+            
+            // Calcular distancia euclidiana en grados
+            const dx = latlng.lng - puntoEstafeta.lng;
+            const dy = latlng.lat - puntoEstafeta.lat;
+            const distancia = Math.sqrt(dx * dx + dy * dy);
+            
+            console.log(`  Estafeta ${feature.properties.ESTAF_NAME}: distancia=${distancia.toFixed(6)} grados`);
+            
+            if (distancia < distanciaMinima && distancia < toleranceDegrees) {
+                distanciaMinima = distancia;
+                estafetaMasCercana = feature;
+            }
+        }
+    });
+    
+    if (estafetaMasCercana) {
+        console.log(`Estafeta más cercana: ${estafetaMasCercana.properties.ESTAF_NAME}, distancia: ${distanciaMinima.toFixed(6)} grados`);
+        return estafetaMasCercana;
+    }
+    
+    return null;
+}
+
 // FUNCIÓN COMPLETAMENTE NUEVA PARA DETECTAR RUTAS - MÁS PRECISA
 function verificarClicEnRutas(latlng) {
     if (!rutasData || !mymap.hasLayer(rutasLayer)) return null;
     
-    console.log("Buscando rutas cerca de:", latlng.lat, latlng.lng);
+    console.log("Buscando rutas cerca de:", latlng.lat.toFixed(6), latlng.lng.toFixed(6));
     
     let rutaMasCercana = null;
     let distanciaMinima = Infinity;
@@ -558,21 +646,6 @@ function verificarClicEnRutas(latlng) {
     return null;
 }
 
-// FUNCIÓN PARA VERIFICAR CLIC EN ESTAFETAS
-function verificarClicEnEstafetas(latlng) {
-    if (!estafetasData || !mymap.hasLayer(estafetasPointsLayer)) return null;
-    
-    const punto = [latlng.lng, latlng.lat];
-    const estafetasEnPunto = leafletPip.pointInLayer(punto, L.geoJSON(estafetasData));
-    
-    if (estafetasEnPunto.length > 0) {
-        console.log("Estafeta encontrada:", estafetasEnPunto[0].feature.properties.ESTAF_NAME);
-        return estafetasEnPunto[0].feature;
-    }
-    
-    return null;
-}
-
 // Función para calcular distancia de punto a segmento (versión mejorada)
 function distanciaPuntoASegmento(p, a, b) {
     // Calcular vectores
@@ -612,9 +685,9 @@ function distanciaPuntoASegmento(p, a, b) {
     return Math.sqrt(dx * dx + dy * dy);
 }
 
-// EVENTO CLIC CORREGIDO
+// EVENTO CLIC CORREGIDO - AHORA CON ZONAS SEPARADAS
 mymap.on("click", function (e) {
-    console.log("=== CLIC EN MAPA ===");
+    console.log("=== CLIC EN MAPA (ÁREA GENERAL) ===");
     console.log("Coordenadas:", e.latlng.lat.toFixed(6), e.latlng.lng.toFixed(6));
     
     // Limpiar selección anterior y restaurar labels
@@ -622,7 +695,7 @@ mymap.on("click", function (e) {
     restoreHiddenLabels();
     hiddenLabels = [];
     
-    // PRIMERO: Verificar si se hizo clic en una estafeta (tiene prioridad)
+    // PRIMERO: Verificar si se hizo clic en una estafeta
     const estafetaClic = verificarClicEnEstafetas(e.latlng);
     if (estafetaClic) {
         mostrarPopupEstafeta(e.latlng, estafetaClic);
@@ -636,7 +709,14 @@ mymap.on("click", function (e) {
         return; // Detener aquí
     }
     
-    // TERCERO: Si no es estafeta ni ruta, procesar código postal
+    // TERCERO: Verificar si se hizo clic en una zona (SOLO si la capa está activa)
+    const zonaClic = verificarClicEnZonas(e.latlng);
+    if (zonaClic) {
+        mostrarPopupZona(e.latlng, zonaClic);
+        return; // Detener aquí - zonas tienen su propio popup
+    }
+    
+    // CUARTO: Si no es estafeta, ruta ni zona, procesar código postal (SIEMPRE de la cuadrícula)
     if (!rawCuadricula) return;
     
     // Buscar en la cuadrícula (SOLO cuadrícula, no en zonas)
@@ -842,6 +922,56 @@ mymap.on("click", function (e) {
     });
 });
 
+// FUNCIÓN PARA MOSTRAR POPUP DE ZONA (REFERENCIA SOLO)
+function mostrarPopupZona(latlng, zona) {
+    const p = zona.properties || {};
+    const nivelVM = p.VM_LEVEL || "N/A";
+    const nombre = p.nombre || p.name || `Zona ${nivelVM}`;
+    const fid = p.fid !== undefined ? p.fid : "N/A";
+    
+    const popupOffset = [0, -60];
+    const popupLatLng = L.latLng(latlng.lat + 0.0004, latlng.lng);
+    
+    const popup = L.popup({offset: popupOffset, className: 'zona-popup'})
+        .setLatLng(popupLatLng)
+        .setContent(`
+            <div style="text-align:center; padding: 10px; max-width: 280px;">
+                <div style="font-size: 16px; color: #6c757d; margin-bottom: 8px; font-weight: bold;">
+                    🗺️ ${nombre}
+                </div>
+                <div style="font-size: 12px; color: #495057; margin-bottom: 12px; text-align: left; line-height: 1.4;">
+                    <strong>Nivel VM:</strong> ${nivelVM}<br>
+                    <strong>ID:</strong> ${fid}<br>
+                    <strong>Tipo:</strong> Zona de Referencia<br>
+                    <strong>Nota:</strong> Esta es solo una referencia visual
+                </div>
+                <div style="font-size: 11px; color: #868e96; margin-bottom: 12px; font-style: italic;">
+                    Las zonas son solo para referencia. El código postal viene de la cuadrícula.
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: center; margin-top: 10px;">
+                    <button class="btn-nav" onclick="window.open('https://www.google.com/maps?q=${latlng.lat},${latlng.lng}')">📍 MAPS</button>
+                </div>
+            </div>
+        `)
+        .openOn(mymap);
+    
+    // Resaltar la zona seleccionada
+    selectionLayer.clearLayers();
+    L.geoJSON(zona, {
+        style: {
+            color: "#6c757d", 
+            weight: 4, 
+            fillColor: "#6c757d",
+            fillOpacity: 0.3,
+            className: 'highlighted-polygon'
+        }
+    }).addTo(selectionLayer);
+    
+    popup.on('remove', function() {
+        selectionLayer.clearLayers();
+    });
+}
+
 // FUNCIÓN MEJORADA PARA MOSTRAR POPUP DE ESTAFETA
 function mostrarPopupEstafeta(latlng, estafeta) {
     const p = estafeta.properties || {};
@@ -881,10 +1011,10 @@ function mostrarPopupEstafeta(latlng, estafeta) {
     // Resaltar la estafeta seleccionada
     selectionLayer.clearLayers();
     L.circleMarker(latlng, {
-        radius: 8,
+        radius: 10,  // Más grande para mejor visibilidad
         color: "#28a745",
         fillColor: "#28a745",
-        fillOpacity: 0.8,
+        fillOpacity: 0.9,
         weight: 3
     }).addTo(selectionLayer);
     
@@ -1066,7 +1196,7 @@ mymap.addControl(new LocateControl());
 
 // CONTROL DE CAPAS
 L.control.layers(null, {
-    "Zonas": zonasGeoLayer,
+    "Zonas (Referencia)": zonasGeoLayer,
     "Cuadrícula": cuadriculaFisicaLayer,
     "Rutas": rutasLayer,
     "Estafetas": estafetasPointsLayer,
