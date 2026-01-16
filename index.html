@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <title>SISTEMA POSTAL PANAMÁ - DINÁMICO</title>
+    <title>SISTEMA POSTAL PANAMÁ - PRO</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -10,6 +10,7 @@
     <style>
         body, html, #mapid { width: 100%; height: 100%; margin: 0; padding: 0; background: #ddd; }
         
+        /* Buscador Superior Derecha */
         .search-container {
             position: absolute; top: 10px; right: 10px;
             z-index: 5000; display: flex; gap: 5px; background: white;
@@ -19,18 +20,21 @@
         #search-input { flex: 1; border: 1px solid #ccc; padding: 5px; outline: none; font-family: monospace; font-size: 14px; text-transform: uppercase; border-radius: 4px; }
         #search-btn { background: #27ae60; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; }
         
+        /* Selector de Capas */
         .leaflet-top.leaflet-right { margin-top: 70px !important; }
 
         .leaflet-tooltip.watermark-tooltip { background: transparent!important; border: none!important; box-shadow: none!important; color: rgba(0,0,0,0.4); font-weight: bold; font-family: monospace; pointer-events: none; }
         
+        /* Popups */
         .popup-header { font-weight: bold; display: block; margin-bottom: 5px; border-bottom: 1px solid #ccc; padding-bottom: 3px; text-align: center; font-size: 11px; text-transform: uppercase; color: #666; }
-        .codigo-final { background: #1a2a6c; color: white; padding: 12px; border-radius: 6px; font-size: 18px; font-weight: bold; text-align: center; margin-bottom: 8px; border: 2px solid #f1c40f; }
+        .codigo-final { background: #1a2a6c; color: white; padding: 12px; border-radius: 6px; font-size: 18px; font-weight: bold; text-align: center; margin-bottom: 8px; border: 2px solid #f1c40f; letter-spacing: 1px; }
         .valor-zona { font-size: 18px; font-weight: bold; text-align: center; color: #1a2a6c; display: block; padding: 10px; background: #f8f9fa; border-radius: 5px; }
         
         .btn-container { display: flex; gap: 5px; justify-content: center; }
         .btn-maps { background: #4285F4; color: white !important; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold; }
         .btn-ws { background: #25D366; color: white !important; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold; }
         
+        /* Botón Ubicación */
         .locate-button {
             position: absolute; bottom: 130px; right: 10px; z-index: 1000;
             background: white; width: 40px; height: 40px; border-radius: 4px;
@@ -44,7 +48,7 @@
 <body>
 
 <div class="search-container">
-    <input type="text" id="search-input" placeholder="BUSCAR CÓDIGO...">
+    <input type="text" id="search-input" placeholder="BUSCAR...">
     <button id="search-btn">IR</button>
 </div>
 
@@ -52,7 +56,7 @@
 <div id="mapid"></div>
 
 <script>
-// ===== MOTOR LÓGICO =====
+// ===== MOTOR LÓGICO ORIGINAL =====
 const ORIGIN = { lat: 10.0, lng: -83.0 };
 const PANAMA_LIMITS = { N: 10.0, S: 7.0, W: -83.0, E: -77.0 };
 const PARAMS = {
@@ -74,7 +78,6 @@ L.control.zoom({ position: 'bottomright' }).addTo(mymap);
 const layerZonas = L.geoJSON(null, {
     style: { color: "#333", weight: 1.5, fillOpacity: 0.1, fillColor: "#3498db" },
     onEachFeature: (f, l) => {
-        // POPUP SIMPLE PARA ZONAS POSTALES
         l.bindPopup(`<span class="popup-header">Zona postal</span><span class="valor-zona">${f.properties.VM_LEVEL}</span>`);
     }
 }).addTo(mymap);
@@ -157,25 +160,26 @@ fetch('estafetasp.geojson').then(r => r.json()).then(data => {
     L.geoJSON(data, { pointToLayer: (f,ll) => L.circleMarker(ll, {radius: 7, fillColor: 'green', color: '#fff', weight: 2, fillOpacity: 1}), onEachFeature: (f,l) => l.bindPopup(`<span class="popup-header">Estafetas postales</span><b>Nombre:</b> ${f.properties.ESTAF_NAME}`) }).addTo(layerEstafetas);
 });
 
-// ===== FUNCIÓN SELECCIONAR DINÁMICA: ZONA + GRID =====
+// ===== FUNCIÓN SELECCIONAR: ZONA-GRID (SIN GUIONES INTERNOS) =====
 function seleccionar(lat, lng) {
     selectionLayer.clearLayers();
     
-    // 1. Buscamos la Zona Postal real en el GeoJSON para ese punto
-    let zonaReal = "Z-0000"; 
+    // 1. Detectar Zona Postal
+    let zonaID = "Z0000"; 
     layerZonas.eachLayer(layer => {
-        if (layer instanceof L.Polygon && layer.getBounds().contains([lat, lng])) {
-            zonaReal = layer.feature.properties.VM_LEVEL;
-        }
+        if (layer.getBounds().contains([lat, lng])) { zonaID = layer.feature.properties.VM_LEVEL; }
     });
 
-    // 2. Generamos el código Grid según el zoom
+    // 2. Obtener Grid según Zoom y unir sin guiones
     const z = mymap.getZoom();
     const res = getGridInfo(lat, lng);
-    let gridCode = (z < 13) ? res.macro : (z < 16.5) ? `${res.macro}-${res.micro}` : `${res.macro}-${res.micro}-${res.nano}`;
+    let gridPart = "";
+    if (z < 13) gridPart = res.macro;
+    else if (z < 16.5) gridPart = res.macro + res.micro;
+    else gridPart = res.macro + res.micro + res.nano;
     
-    // 3. FUSIÓN FINAL: ZONA-GRID
-    const codigoPostalFinal = `${zonaReal}-${gridCode}`;
+    // 3. Formato Final: ZONA-GRID (ej: A6099-B8FDCH)
+    const codigoFinal = `${zonaID}-${gridPart}`;
 
     const step = (z < 13) ? PARAMS.RES_MACRO : (z < 16.5) ? PARAMS.RES_MICRO : PARAMS.RES_NANO;
     const snap = { lng: Math.floor((lng - ORIGIN.lng) / step) * step + ORIGIN.lng, lat: ORIGIN.lat - Math.floor((ORIGIN.lat - lat) / step) * step };
@@ -186,10 +190,10 @@ function seleccionar(lat, lng) {
      .addTo(selectionLayer)
      .bindPopup(`
         <span class="popup-header">Código Postal Final</span>
-        <div class="codigo-final">${codigoPostalFinal}</div>
+        <div class="codigo-final">${codigoFinal}</div>
         <div class="btn-container">
             <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn-maps">📍 MAPS</a>
-            <a href="https://wa.me/?text=Mi+Código+Postal:+${codigoPostalFinal}" target="_blank" class="btn-ws">💬 WS</a>
+            <a href="https://wa.me/?text=Código+Postal:+${codigoFinal}" target="_blank" class="btn-ws">💬 WS</a>
         </div>
      `).openPopup();
 }
@@ -217,18 +221,17 @@ mymap.on('click', (e) => {
 });
 
 document.getElementById('search-btn').addEventListener('click', () => {
-    // La búsqueda navega al centro de Macro, Micro o Nano según el código ingresado
     const input = document.getElementById('search-input').value.toUpperCase().replace(/\s/g, '');
     const p = input.split('-');
     try {
-        const idM = decode(p[0]);
+        const idM = decode(p[0].substring(0,2)); // Intento simple de decodificar
         let lat, lng;
         const my = Math.floor(idM / PARAMS.MACRO_X_COUNT), mx = idM % PARAMS.MACRO_X_COUNT;
         lat = ORIGIN.lat - (my * PARAMS.RES_MACRO) - (PARAMS.RES_MACRO/2);
         lng = ORIGIN.lng + (mx * PARAMS.RES_MACRO) + (PARAMS.RES_MACRO/2);
-        mymap.flyTo([lat, lng], 14);
+        mymap.flyTo([lat, lng], 15);
         mymap.once('moveend', () => seleccionar(lat, lng));
-    } catch(e) { alert("Formato de búsqueda: XX o XX-XX"); }
+    } catch(e) { alert("Use el formato de zona o coordenadas."); }
 });
 
 mymap.on('moveend', render);
