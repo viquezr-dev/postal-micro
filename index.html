@@ -33,6 +33,31 @@
         }
         .inv { background: none; border: none; }
         .error-msg { color: #c0392b; font-weight: bold; text-align: center; padding: 10px; font-size: 12px; line-height: 1.4; }
+
+        .map-title {
+    position: absolute;
+    top: 10px;
+    left: 50px; /* Espacio para que no choque con el botón de Zoom */
+    z-index: 1000;
+    background: rgba(255, 255, 255, 0.85);
+    padding: 10px;
+    border-radius: 4px;
+    border-left: 4px solid #1a2a6c; /* Azul oscuro oficial */
+    pointer-events: none; /* Permite hacer clic a través del título si es necesario */
+}
+
+.map-title h1 {
+    margin: 0;
+    font-size: 14px;
+    color: #1a2a6c;
+}
+
+.map-title span {
+    font-size: 9px;
+    color: #555;
+    font-weight: bold;
+}
+        
     </style>
 </head>
 <body>
@@ -302,6 +327,7 @@ render();
 </script>
 </body>
 </html>
+
 
 
 
