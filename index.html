@@ -192,13 +192,13 @@ function seleccionar(lat, lng, forcedZonaID = null) {
         codigoFinal = zonaID;
     } else {
         if (z >= 16.5) {
-            tituloPopup = "DIRECCIÓN NANO CONCATENADA";
+            tituloPopup = "CÓDIGO POSTAL";
             codigoFinal = `${zonaID}-${res.macro}${res.micro}${res.nano}`;
         } else if (z >= 13) {
-            tituloPopup = "NIVEL MICRO";
+            tituloPopup = "ÁREA POSTAL";
             codigoFinal = `NIVEL-${res.macro}${res.micro}`;
         } else {
-            tituloPopup = "NIVEL MACRO";
+            tituloPopup = "RUTA POSTAL";
             codigoFinal = `NIVEL-${res.macro}`;
         }
 
@@ -289,4 +289,5 @@ render();
 </script>
 </body>
 </html>
+
 
