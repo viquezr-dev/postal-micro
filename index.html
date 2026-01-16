@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <title>SISTEMA POSTAL PANAMÁ - ESTRATEGIA JERÁRQUICA</title>
+    <title>SISTEMA POSTAL PANAMÁ - VALIDACIÓN GLOBAL</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -29,7 +29,7 @@
             border-radius: 4px; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.3); border: none; display: flex; align-items: center; justify-content: center; font-size: 20px;
         }
         .inv { background: none; border: none; }
-        .error-msg { color: #c0392b; font-weight: bold; text-align: center; padding: 10px; font-size: 12px; }
+        .error-msg { color: #c0392b; font-weight: bold; text-align: center; padding: 10px; font-size: 12px; line-height: 1.4; }
     </style>
 </head>
 <body>
@@ -101,48 +101,52 @@ function getGridInfo(lat, lng) {
 
 function seleccionar(lat, lng) {
     selectionLayer.clearLayers();
-    const z = mymap.getZoom();
-    const res = getGridInfo(lat, lng);
     let zonaID = null;
 
-    // Solo buscamos zona postal si estamos en nivel NANO (Zoom >= 16.5)
-    if (z >= 16.5) {
-        layerZonas.eachLayer(layer => {
-            if (layer instanceof L.Polygon && layer.getBounds().contains(L.latLng(lat, lng))) {
-                zonaID = layer.feature.properties.VM_LEVEL;
-            }
-        });
-        
-        // Si estamos cerca y NO hay zona postal, error de área
-        if (!zonaID) {
-            L.popup().setLatLng([lat, lng]).setContent('<div class="error-msg">⚠️ ÁREA NO DEFINIDA<br>Esta ubicación se encuentra fuera de las zonas postales definidas.</div>').openOn(mymap);
-            return;
+    // VALIDACIÓN PRIMARIA: Buscar zona postal en cualquier zoom
+    layerZonas.eachLayer(layer => {
+        if (layer instanceof L.Polygon && layer.getBounds().contains(L.latLng(lat, lng))) {
+            zonaID = layer.feature.properties.VM_LEVEL;
         }
+    });
+
+    // Si no toca una zona del GeoJSON -> ERROR (Sin importar el zoom)
+    if (!zonaID) {
+        L.popup()
+            .setLatLng([lat, lng])
+            .setContent('<div class="error-msg">⚠️ ÁREA NO DEFINIDA<br>Esta ubicación se encuentra fuera de las zonas postales definidas.</div>')
+            .openOn(mymap);
+        return;
     }
 
-    // LÓGICA DE CONCATENACIÓN SEGÚN TU ESTRATEGIA
-    let tituloPopup = "";
-    let codigoFinal = "";
-    const step = (z >= 16.5) ? PARAMS.RES_NANO : (z >= 13) ? PARAMS.RES_MICRO : PARAMS.RES_MACRO;
-
+    const z = mymap.getZoom();
+    const res = getGridInfo(lat, lng);
+    let tituloPopup = "ZONA POSTAL DETECTADA";
+    let codigoFinal = zonaID;
+    
+    // JERARQUÍA DE CONCATENACIÓN
     if (z >= 16.5) {
         tituloPopup = "DIRECCIÓN POSTAL COMPLETA";
         codigoFinal = `${zonaID}-${res.macro}${res.micro}${res.nano}`;
     } else if (z >= 13) {
-        tituloPopup = "NIVEL MICRO";
-        codigoFinal = `NIVEL-${res.macro}${res.micro}`;
-    } else {
-        tituloPopup = "NIVEL MACRO";
-        codigoFinal = `NIVEL-${res.macro}`;
+        tituloPopup = "ZONA Y NIVEL MICRO";
+        codigoFinal = `${zonaID}-${res.macro}${res.micro}`;
+    } else if (z >= 9) {
+        tituloPopup = "ZONA Y NIVEL MACRO";
+        codigoFinal = `${zonaID}-${res.macro}`;
     }
-    
-    const snap = { 
-        lng: Math.floor((lng - ORIGIN.lng) / step + 0.00000001) * step + ORIGIN.lng, 
-        lat: ORIGIN.lat - Math.floor((ORIGIN.lat - lat) / step + 0.00000001) * step 
-    };
 
-    L.rectangle([[snap.lat, snap.lng], [snap.lat - step, snap.lng + step]], { color: '#f1c40f', weight: 3, fillOpacity: 0.2, interactive: false }).addTo(selectionLayer);
+    const step = (z >= 16.5) ? PARAMS.RES_NANO : (z >= 13) ? PARAMS.RES_MICRO : (z >= 9) ? PARAMS.RES_MACRO : 0.0001;
     
+    // Solo dibujar el cuadro si hay una resolución activa
+    if (z >= 9) {
+        const snap = { 
+            lng: Math.floor((lng - ORIGIN.lng) / step + 0.00000001) * step + ORIGIN.lng, 
+            lat: ORIGIN.lat - Math.floor((ORIGIN.lat - lat) / step + 0.00000001) * step 
+        };
+        L.rectangle([[snap.lat, snap.lng], [snap.lat - step, snap.lng + step]], { color: '#f1c40f', weight: 3, fillOpacity: 0.2, interactive: false }).addTo(selectionLayer);
+    }
+
     L.marker([lat, lng], { icon: L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', iconSize: [20, 32], iconAnchor: [10, 32] }) })
      .addTo(selectionLayer)
      .bindPopup(`
