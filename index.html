@@ -133,20 +133,29 @@ function seleccionar(lat, lng, forcedZonaID = null) {
     selectionLayer.clearLayers();
     let zonaID = forcedZonaID;
 
-    // Si no viene una zona forzada (clic en mapa vacío), buscamos manualmente
+    // Si no se pasó un ID (clic en el mapa base), verificamos manualmente
     if (!zonaID) {
         layerZonas.eachLayer(layer => {
             if (layer instanceof L.Polygon && layer.getBounds().contains(L.latLng(lat, lng))) {
-                zonaID = layer.feature.properties.VM_LEVEL;
+                // Verificación extra de precisión para polígonos complejos
+                if (leafletPip.pointInLayer([lng, lat], layerZonas).length > 0) {
+                    zonaID = layer.feature.properties.VM_LEVEL;
+                }
             }
         });
     }
 
+    // SI NO HAY ZONA (Clic fuera de los polígonos de estafetas)
     if (!zonaID) {
         L.popup().setLatLng([lat, lng])
-            .setContent('<div class="error-msg">⚠️ ÁREA NO DEFINIDA<br>Ubicación fuera de polígonos válidos.</div>')
+            .setContent(`
+                <div style="text-align:center;">
+                    <div class="error-msg">⚠️ ÁREA NO DEFINIDA</div>
+                    <span style="font-size:10px; color:#666;">La ubicación [${lat.toFixed(4)}, ${lng.toFixed(4)}]<br>no pertenece a ninguna zona postal.</span>
+                </div>
+            `)
             .openOn(mymap);
-        return;
+        return; 
     }
 
     const z = mymap.getZoom();
@@ -255,3 +264,4 @@ render();
 </script>
 </body>
 </html>
+
