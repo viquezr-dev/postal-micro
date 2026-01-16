@@ -17,7 +17,6 @@
         #search-btn { background: #27ae60; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 12px; }
         .leaflet-top.leaflet-right { margin-top: 70px !important; }
         
-        /* FUNCIONALIDAD: Etiquetas flotantes (Watermarks) */
         .leaflet-tooltip.watermark-tooltip { background: transparent!important; border: none!important; box-shadow: none!important; color: rgba(0,0,0,0.5); font-weight: bold; font-family: monospace; text-shadow: 1px 1px 0px white; pointer-events: none; }
         .label-macro { color: #1a73e8!important; font-size: 15px; }
         .label-micro { color: #e67e22!important; font-size: 11px; }
@@ -28,7 +27,6 @@
         .btn-maps { background: #4285F4; color: white !important; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold; }
         .btn-ws { background: #25D366; color: white !important; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold; }
         
-        /* FUNCIONALIDAD: Botón de ubicación */
         .locate-button {
             position: absolute; bottom: 130px; right: 10px; z-index: 1000; background: white; width: 40px; height: 40px; 
             border-radius: 4px; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.3); border: none; display: flex; align-items: center; justify-content: center; font-size: 20px;
@@ -48,7 +46,6 @@
 <div id="mapid"></div>
 
 <script>
-// PARÁMETROS MATEMÁTICOS (Funcionalidad original preservada)
 const ORIGIN = { lat: 10.0, lng: -83.0 };
 const PANAMA_LIMITS = { N: 10.0, S: 7.0, W: -83.0, E: -77.0 };
 const PARAMS = {
@@ -63,8 +60,32 @@ const mymap = L.map('mapid', { zoomSnap: 0.1, zoomControl: false }).setView([8.5
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mymap);
 L.control.zoom({ position: 'bottomright' }).addTo(mymap);
 
-// FUNCIONALIDAD: Todas las capas originales
-const layerZonas = L.geoJSON(null, { style: { color: "#333", weight: 1.5, fillOpacity: 0.1, fillColor: "#3498db" } }).addTo(mymap);
+// FUNCIONALIDAD: Estilos de resaltado
+const styleZonaNormal = { color: "#333", weight: 1.5, fillOpacity: 0.1, fillColor: "#3498db" };
+const styleZonaHover = { color: "#f1c40f", weight: 3, fillOpacity: 0.4, fillColor: "#3498db" };
+
+// CAPAS
+const layerZonas = L.geoJSON(null, { 
+    style: styleZonaNormal,
+    onEachFeature: function(feature, layer) {
+        layer.on({
+            mouseover: function(e) {
+                var l = e.target;
+                l.setStyle(styleZonaHover);
+                if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) l.bringToFront();
+            },
+            mouseout: function(e) {
+                layerZonas.resetStyle(e.target);
+            },
+            click: function(e) {
+                // Ejecutamos la selección precisa basándonos en la zona clickeada
+                seleccionar(e.latlng.lat, e.latlng.lng, feature.properties.VM_LEVEL);
+                L.DomEvent.stopPropagation(e);
+            }
+        });
+    }
+}).addTo(mymap);
+
 const layerMacro = L.layerGroup().addTo(mymap);
 const layerMicro = L.layerGroup().addTo(mymap);
 const layerNano = L.layerGroup().addTo(mymap);
@@ -73,7 +94,7 @@ const layerEstafetas = L.layerGroup().addTo(mymap);
 const layerMiUbicacion = L.layerGroup().addTo(mymap);
 const selectionLayer = L.layerGroup().addTo(mymap);
 
-// CARGA DE DATOS (Funcionalidad original preservada)
+// CARGA DE DATOS
 fetch('estafetas.geojson').then(r => r.json()).then(data => layerZonas.addData(data));
 fetch('estafetasl.geojson').then(r => r.json()).then(data => {
     L.geoJSON(data, { style: {color: 'red', weight: 2}, onEachFeature: (f,l) => l.bindPopup(`<b>RUTA:</b> ${f.properties.RUTA}`) }).addTo(layerRutas);
@@ -82,7 +103,7 @@ fetch('estafetasp.geojson').then(r => r.json()).then(data => {
     L.geoJSON(data, { pointToLayer: (f,ll) => L.circleMarker(ll, {radius: 6, fillColor: 'green', color: '#fff', weight: 2, fillOpacity: 1}), onEachFeature: (f,l) => l.bindPopup(`<b>ESTAFETA:</b> ${f.properties.ESTAF_NAME}`) }).addTo(layerEstafetas);
 });
 
-// CODIFICACIÓN/DECODIFICACIÓN (Funcionalidad original preservada)
+// CODIFICACIÓN/DECODIFICACIÓN
 function encode(num, len) {
     let s = ""; let n = Math.abs(Math.floor(num));
     for (let i = 0; i < len; i++) { s = PARAMS.ALFA[n % 30] + s; n = Math.floor(n / 30); }
@@ -107,18 +128,19 @@ function getGridInfo(lat, lng) {
     return { macro: encode((my * PARAMS.MACRO_X_COUNT) + mx, 2), micro: encode((microY * 24) + microX, 2), nano: encode((nanoY * 25) + nanoX, 2) };
 }
 
-// LOGICA DE SELECCIÓN Y VALIDACIÓN (Ajustada según tus reglas)
-function seleccionar(lat, lng) {
+// LOGICA DE SELECCIÓN (Modificada para recibir zona directa)
+function seleccionar(lat, lng, forcedZonaID = null) {
     selectionLayer.clearLayers();
-    let zonaID = null;
-    const isZonaVisible = mymap.hasLayer(layerZonas);
+    let zonaID = forcedZonaID;
 
-    // 1. VALIDACIÓN DE AREA: Solo es activa si toca estafetas.geojson
-    layerZonas.eachLayer(layer => {
-        if (layer instanceof L.Polygon && layer.getBounds().contains(L.latLng(lat, lng))) {
-            zonaID = layer.feature.properties.VM_LEVEL;
-        }
-    });
+    // Si no viene una zona forzada (clic en mapa vacío), buscamos manualmente
+    if (!zonaID) {
+        layerZonas.eachLayer(layer => {
+            if (layer instanceof L.Polygon && layer.getBounds().contains(L.latLng(lat, lng))) {
+                zonaID = layer.feature.properties.VM_LEVEL;
+            }
+        });
+    }
 
     if (!zonaID) {
         L.popup().setLatLng([lat, lng])
@@ -129,18 +151,17 @@ function seleccionar(lat, lng) {
 
     const z = mymap.getZoom();
     const res = getGridInfo(lat, lng);
+    const isZonaVisible = mymap.hasLayer(layerZonas);
     let tituloPopup = "";
     let codigoFinal = "";
 
     if (isZonaVisible) {
-        // MODO ZONAS ACTIVADO: No dibuja cuadro, solo muestra VM_LEVEL
         tituloPopup = "ZONA POSTAL";
         codigoFinal = zonaID;
     } else {
-        // MODO RED: Jerarquía y dibujo de cuadro amarillo
         if (z >= 16.5) {
             tituloPopup = "DIRECCIÓN NANO CONCATENADA";
-            codigoFinal = `${zonaID}-${res.macro}${res.micro}${res.nano}`; // A5432-B5DNJ8
+            codigoFinal = `${zonaID}-${res.macro}${res.micro}${res.nano}`;
         } else if (z >= 13) {
             tituloPopup = "NIVEL MICRO";
             codigoFinal = `NIVEL-${res.macro}${res.micro}`;
@@ -163,13 +184,13 @@ function seleccionar(lat, lng) {
         <span class="popup-header">${tituloPopup}</span>
         <div class="codigo-final">${codigoFinal}</div>
         <div class="btn-container">
-            <a href="https://www.google.com/maps/search/?api=1&query=${lat},${lng}" target="_blank" class="btn-maps">📍 MAPS</a>
+            <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn-maps">📍 MAPS</a>
             <a href="https://wa.me/?text=Código+Postal:+${codigoFinal}" target="_blank" class="btn-ws">💬 WS</a>
         </div>
      `, { offset: L.point(0, -25) }).openPopup();
 }
 
-// FUNCIONALIDAD: Buscador original
+// BUSCADOR
 document.getElementById('search-btn').addEventListener('click', () => {
     const val = document.getElementById('search-input').value.toUpperCase().replace(/\s/g, '');
     if (val.length !== 6) return;
@@ -185,7 +206,7 @@ document.getElementById('search-btn').addEventListener('click', () => {
     } catch(e) { alert("Código inválido"); }
 });
 
-// FUNCIONALIDAD: Render de cuadrícula y etiquetas de texto
+// RENDER CUADRÍCULA
 function render() {
     layerMacro.clearLayers(); layerMicro.clearLayers(); layerNano.clearLayers();
     const z = mymap.getZoom();
@@ -220,7 +241,6 @@ const overlays = {
 };
 L.control.layers(null, overlays, { collapsed: false, position: 'topright' }).addTo(mymap);
 
-// FUNCIONALIDAD: Localización GPS
 function findMe() { mymap.locate({setView: true, maxZoom: 16}); }
 mymap.on('locationfound', (e) => {
     layerMiUbicacion.clearLayers();
@@ -228,6 +248,7 @@ mymap.on('locationfound', (e) => {
     seleccionar(e.latlng.lat, e.latlng.lng);
 });
 
+// Evento de clic en el mapa (para áreas vacías)
 mymap.on('click', (e) => seleccionar(e.latlng.lat, e.latlng.lng));
 mymap.on('moveend', render);
 render();
