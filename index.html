@@ -201,11 +201,21 @@ function seleccionar(lat, lng, forcedZonaID = null) {
 
     // 3. Verificamos zona
     if (!zonaID) {
+        // PLAN A: Buscar en el centro del cuadro (Para precisión de red)
         layerZonas.eachLayer(layer => {
             if (layer instanceof L.Polygon && isPointInPolygon(L.latLng(centroCuadro.lat, centroCuadro.lng), layer)) {
                 zonaID = layer.feature.properties.VM_LEVEL;
             }
         });
+
+        // PLAN B: Si el Plan A falló, buscar en el punto exacto del clic/GPS
+        if (!zonaID) {
+            layerZonas.eachLayer(layer => {
+                if (layer instanceof L.Polygon && isPointInPolygon(L.latLng(lat, lng), layer)) {
+                    zonaID = layer.feature.properties.VM_LEVEL;
+                }
+            });
+        }
     }
 
     // 4. Error si no hay zona
@@ -322,7 +332,7 @@ const overlays = {
 };
 L.control.layers(null, overlays, { collapsed: false, position: 'topright' }).addTo(mymap);
 
-function findMe() { mymap.locate({setView: true, maxZoom: 16}); }
+function findMe() { mymap.locate({setView: true, maxZoom: 18, enableHighAccuracy: true }); }
 mymap.on('locationfound', (e) => {
     layerMiUbicacion.clearLayers();
     L.circleMarker(e.latlng, {radius: 8, color: 'white', fillColor: '#1a73e8', fillOpacity: 1, weight: 3}).addTo(layerMiUbicacion);
@@ -336,6 +346,7 @@ render();
 </script>
 </body>
 </html>
+
 
 
 
