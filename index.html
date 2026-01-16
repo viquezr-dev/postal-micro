@@ -1,147 +1,247 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema Postal Dinámico - Panamá</title>
-
+    <title>SISTEMA POSTAL PANAMÁ - PRO</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-search@3.0.9/dist/leaflet-search.min.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <style>
-        body { margin: 0; padding: 0; font-family: 'Segoe UI', Arial, sans-serif; }
-        #map { height: 100vh; width: 100%; background: #f0f0f0; }
+        body, html, #mapid { width: 100%; height: 100%; margin: 0; padding: 0; background: #ddd; }
         
-        /* Botones de Zoom Personalizados (Color Azul Postal) */
-        .leaflet-control-zoom-in, .leaflet-control-zoom-out {
-            background-color: #0056b3 !important;
-            color: white !important;
-            border-bottom: 1px solid #00448a !important;
+        /* Buscador */
+        .search-container {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            z-index: 5000; display: flex; gap: 5px; background: white;
+            padding: 8px; border-radius: 40px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            width: 90%; max-width: 450px;
         }
-
-        /* Estilo Botón Brújula (Mi Ubicación) */
+        #search-input { flex: 1; border: none; padding: 8px 15px; outline: none; font-family: monospace; font-size: 16px; text-transform: uppercase; }
+        #search-btn { background: #27ae60; color: white; border: none; padding: 8px 20px; border-radius: 30px; cursor: pointer; font-weight: bold; }
+        
+        /* Grid Labels */
+        .leaflet-tooltip.watermark-tooltip { background: transparent!important; border: none!important; box-shadow: none!important; color: rgba(0,0,0,0.5); font-weight: bold; font-family: monospace; text-shadow: 1px 1px 0px white; pointer-events: none; }
+        .label-macro { color: #1a73e8!important; font-size: 15px; }
+        .label-micro { color: #e67e22!important; font-size: 11px; }
+        
+        /* Popups Dinámicos */
+        .codigo-final { background: #1a2a6c; color: white; padding: 12px; border-radius: 6px; font-size: 18px; font-weight: bold; text-align: center; margin-bottom: 10px; }
+        .btn-container { display: flex; gap: 5px; justify-content: center; }
+        .btn-maps { background: #4285F4; color: white !important; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold; }
+        .btn-ws { background: #25D366; color: white !important; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold; }
+        
+        /* Controles */
+        .leaflet-control-zoom-in, .leaflet-control-zoom-out { background-color: #0056b3 !important; color: white !important; }
         .locate-button {
             position: absolute; bottom: 80px; right: 10px; z-index: 1000;
             background: white; width: 40px; height: 40px; border-radius: 4px;
             cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-            border: none; display: flex; align-items: center; justify-content: center;
-            font-size: 20px; transition: 0.3s;
+            border: none; display: flex; align-items: center; justify-content: center; font-size: 20px;
         }
-        .locate-button:hover { background: #f1f1f1; transform: scale(1.1); }
-
-        /* Estilos de Popups y Botones internos */
-        .btn-container { display: flex; gap: 8px; justify-content: center; margin-top: 10px; }
-        .btn-maps { background: #4285F4; color: white !important; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold; }
-        .btn-ws { background: #25D366; color: white !important; padding: 8px 12px; border-radius: 4px; text-decoration: none; font-size: 11px; font-weight: bold; }
-        .popup-title { font-weight: bold; display: block; margin-bottom: 5px; border-bottom: 1px solid #eee; text-transform: uppercase; font-size: 12px; }
+        .inv { background: none; border: none; }
     </style>
 </head>
 <body>
 
-<button class="locate-button" onclick="findMe()" title="Mi Ubicación">🧭</button>
-<div id="map"></div>
+<div class="search-container">
+    <input type="text" id="search-input" placeholder="MACRO-MICRO-NANO" maxlength="11">
+    <button id="search-btn">BUSCAR</button>
+</div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/leaflet-search@3.0.9/dist/leaflet-search.min.js"></script>
+<button class="locate-button" onclick="findMe()" title="Mi Ubicación">🧭</button>
+<div id="mapid"></div>
 
 <script>
-    // 1. Configuración del Mapa
-    const map = L.map('map', { zoomControl: false }).setView([8.983, -79.517], 8);
-    
-    // Zoom en la esquina inferior derecha con color azul (vía CSS)
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
+// ===== CONFIGURACIÓN MOTOR (Tu código original) =====
+const ORIGIN = { lat: 10.0, lng: -83.0 };
+const PANAMA_LIMITS = { N: 10.0, S: 7.0, W: -83.0, E: -77.0 };
+const PARAMS = {
+    RES_MACRO: 0.143, RES_MICRO: 0.005958, RES_NANO: 0.000238,
+    ALFA: "23456789ABCDEFGHJKLMNPQRSTVWXYZ",
+    MACRO_X_COUNT: Math.ceil((77.0 - 83.0) / -0.143)
+};
 
-    const claveFija = "B9EVK9";
+const mymap = L.map('mapid', { 
+    zoomSnap: 0.1,
+    zoomControl: false,
+    maxBounds: [[6.5, -83.5], [10.5, -76.5]],
+    maxBoundsViscosity: 1.0 
+}).setView([8.5, -80.0], 8);
 
-    // Capas Base
-    const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
+L.control.zoom({ position: 'bottomright' }).addTo(mymap);
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mymap);
 
-    // Grupos de Capas
-    const grupoZonas = L.layerGroup().addTo(map);
-    const grupoRutas = L.layerGroup().addTo(map);
-    const grupoEstafetas = L.layerGroup().addTo(map);
-    const grupoMiUbicacion = L.layerGroup().addTo(map);
+// ===== CAPAS =====
+const layerMacro = L.layerGroup().addTo(mymap);
+const layerMicro = L.layerGroup().addTo(mymap);
+const layerNano = L.layerGroup().addTo(mymap);
+const layerRutas = L.layerGroup().addTo(mymap);
+const layerEstafetas = L.layerGroup().addTo(mymap);
+const layerMiUbicacion = L.layerGroup().addTo(mymap);
+const selectionLayer = L.layerGroup().addTo(mymap);
 
-    // --- CARGA DE ZONAS (Polígonos) ---
-    fetch('estafetas.geojson').then(res => res.json()).then(data => {
-        L.geoJSON(data, {
-            style: { color: "#555", weight: 1, fillOpacity: 0.1 },
-            onEachFeature: function(feature, layer) {
-                const vm = feature.properties.VM_LEVEL || "0000";
-                const fullCode = `${vm}-${claveFija}`;
-                const center = layer.getBounds().getCenter();
-                layer.bindPopup(`
-                    <div style="text-align:center;">
-                        <span class="popup-title" style="color:#e67e22;">CÓDIGO POSTAL</span>
-                        <b style="font-size:16px;">${fullCode}</b>
-                        <div class="btn-container">
-                            <a href="https://www.google.com/maps?q=${center.lat},${center.lng}" target="_blank" class="btn-maps">📍 MAPS</a>
-                            <a href="https://wa.me/?text=Código+Postal:+${fullCode}" target="_blank" class="btn-ws">💬 WS</a>
-                        </div>
-                    </div>`);
-            }
-        }).addTo(grupoZonas);
-    });
-
-    // --- CARGA DE RUTAS (Líneas Rojas) ---
-    fetch('estafetasl.geojson').then(res => res.json()).then(data => {
-        L.geoJSON(data, {
-            style: { color: "#FF0000", weight: 3 },
-            onEachFeature: function(feature, layer) {
-                layer.bindPopup(`
-                    <span class="popup-title" style="color:#d32f2f;">RUTA POSTAL</span>
-                    <b>FID:</b> ${feature.properties.fid}<br>
-                    <b>Ruta:</b> ${feature.properties.RUTA}<br>
-                    <b>Distancia:</b> ${feature.properties.distancia} km`);
-            }
-        }).addTo(grupoRutas);
-    });
-
-    // --- CARGA DE ESTAFETAS (Puntos Verdes + Buscador) ---
-    fetch('estafetasp.geojson').then(res => res.json()).then(data => {
-        const geoEstafetas = L.geoJSON(data, {
-            pointToLayer: (feature, latlng) => L.circleMarker(latlng, { radius: 7, fillColor: "#28A745", color: "#fff", weight: 2, fillOpacity: 1 }),
-            onEachFeature: function(feature, layer) {
-                const vm = feature.properties.VM_LEVEL || "";
-                feature.properties.postal_search = `${vm}-${claveFija}`;
-                layer.bindPopup(`
-                    <span class="popup-title" style="color:#2e7d32;">ESTAFETAS POSTALES</span>
-                    <b>Nombre:</b> ${feature.properties.ESTAF_NAME}<br>
-                    <b>Código:</b> ${feature.properties.ESTAF_CODE}`);
-            }
-        }).addTo(grupoEstafetas);
-
-        // Buscador arriba a la derecha
-        map.addControl(new L.Control.Search({
-            layer: grupoEstafetas, propertyName: 'postal_search', position: 'topright', marker: false, initial: false,
-            textPlaceholder: '🔍 Buscar Código...', moveToLocation: function(latlng) { map.setView(latlng, 15); }
-        }));
-    });
-
-    // --- SELECTOR DE CAPAS ---
-    const overlayMaps = {
-        "📍 Estafetas": grupoEstafetas,
-        "🛣️ Rutas": grupoRutas,
-        "🔲 Zonas": grupoZonas,
-        "🔵 Mi Ubicación": grupoMiUbicacion
-    };
-    L.control.layers({"Mapa": osm}, overlayMaps, { collapsed: false, position: 'topright' }).addTo(map);
-
-    // --- FUNCIÓN MI UBICACIÓN CON BRÚJULA ---
-    let markerUsuario;
-    function findMe() {
-        map.locate({setView: true, maxZoom: 15});
+// ===== MOTOR ENCODE/DECODE (Tu lógica) =====
+function encode(num, len) {
+    let s = ""; let n = Math.abs(Math.floor(num));
+    for (let i = 0; i < len; i++) { s = PARAMS.ALFA[n % 30] + s; n = Math.floor(n / 30); }
+    return s;
+}
+function decode(s) {
+    let n = 0;
+    for (let i = 0; i < s.length; i++) {
+        let idx = PARAMS.ALFA.indexOf(s[i].toUpperCase());
+        if (idx === -1) throw new Error();
+        n = n * 30 + idx;
     }
+    return n;
+}
+function isInsidePanama(lat, lng) {
+    return lat <= PANAMA_LIMITS.N && lat >= PANAMA_LIMITS.S && lng >= PANAMA_LIMITS.W && lng <= PANAMA_LIMITS.E;
+}
 
-    map.on('locationfound', function(e) {
-        grupoMiUbicacion.clearLayers(); // Limpia ubicación anterior
-        markerUsuario = L.marker(e.latlng).bindPopup("Tu ubicación actual").addTo(grupoMiUbicacion);
-        // Asegura que la capa de ubicación esté encendida en el selector
-        if (!map.hasLayer(grupoMiUbicacion)) { map.addLayer(grupoMiUbicacion); }
-    });
+function getInfo(lat, lng) {
+    if (!isInsidePanama(lat, lng)) return null;
+    const mx = Math.floor((lng - ORIGIN.lng) / PARAMS.RES_MACRO);
+    const my = Math.floor((ORIGIN.lat - lat) / PARAMS.RES_MACRO);
+    const macroID = (my * PARAMS.MACRO_X_COUNT) + mx;
+    const microX = Math.floor(((lng - ORIGIN.lng) % PARAMS.RES_MACRO) / PARAMS.RES_MICRO);
+    const microY = Math.floor(((ORIGIN.lat - lat) % PARAMS.RES_MACRO) / PARAMS.RES_MICRO);
+    const microID = (microY * 24) + microX;
+    const nanoX = Math.floor((((lng - ORIGIN.lng) % PARAMS.RES_MACRO) % PARAMS.RES_MICRO) / PARAMS.RES_NANO);
+    const nanoY = Math.floor((((ORIGIN.lat - lat) % PARAMS.RES_MACRO) % PARAMS.RES_MICRO) / PARAMS.RES_NANO);
+    const nanoID = (nanoY * 25) + nanoX;
+    return { macro: encode(macroID, 2), micro: encode(microID, 2), nano: encode(nanoID, 2) };
+}
 
-    map.on('locationerror', function() { alert("Acceso a ubicación denegado."); });
+// ===== RENDER GRIDS =====
+function render() {
+    layerMacro.clearLayers(); layerMicro.clearLayers(); layerNano.clearLayers();
+    const z = mymap.getZoom();
+    if (z >= 9) drawGrid(PARAMS.RES_MACRO, layerMacro, 'label-macro', 2, '#1a73e8', 0.3, z);
+    if (z >= 13) drawGrid(PARAMS.RES_MICRO, layerMicro, 'label-micro', 1, '#e67e22', 0.2, z);
+    if (z >= 16.5) drawGrid(PARAMS.RES_NANO, layerNano, '', 0.5, '#2c3e50', 0.15, z);
+}
 
+function drawGrid(step, layer, labelClass, weight, color, opacity, zoom) {
+    const b = mymap.getBounds();
+    let sLng = Math.floor((b.getWest() - ORIGIN.lng) / step) * step + ORIGIN.lng;
+    let sLat = ORIGIN.lat - Math.floor((ORIGIN.lat - b.getNorth()) / step) * step;
+    let count = 0;
+    for (let lo = sLng; lo < b.getEast() + step && lo < PANAMA_LIMITS.E; lo += step) {
+        if (lo < PANAMA_LIMITS.W) continue;
+        for (let la = sLat; la > b.getSouth() - step && la > PANAMA_LIMITS.S; la -= step) {
+            if (la > PANAMA_LIMITS.N) continue;
+            if (count++ > 700) return;
+            const data = getInfo(la - step/2, lo + step/2);
+            if (!data) continue;
+            L.rectangle([[la, lo], [la - step, lo + step]], { 
+                color: color, weight: weight, fill: false, opacity: opacity, interactive: false 
+            }).addTo(layer);
+            if (labelClass && ((labelClass==='label-macro' && zoom < 13) || (labelClass==='label-micro' && zoom >= 13 && zoom < 16.5))) {
+                const txt = labelClass === 'label-macro' ? data.macro : data.micro;
+                L.marker([la - step/2, lo + step/2], { icon: L.divIcon({className: 'inv'}) }).bindTooltip(txt, { permanent: true, direction: 'center', className: `watermark-tooltip ${labelClass}` }).addTo(layer);
+            }
+        }
+    }
+}
+
+// ===== SELECCIÓN Y POPUP MEJORADO =====
+function seleccionar(lat, lng) {
+    selectionLayer.clearLayers();
+    const res = getInfo(lat, lng);
+    if (!res) return;
+
+    const z = mymap.getZoom();
+    let codeToShow = (z < 13) ? res.macro : (z < 16.5) ? `${res.macro}-${res.micro}` : `${res.macro}-${res.micro}-${res.nano}`;
+    let step = (z < 13) ? PARAMS.RES_MACRO : (z < 16.5) ? PARAMS.RES_MICRO : PARAMS.RES_NANO;
+
+    const snap = {
+        lng: Math.floor((lng - ORIGIN.lng) / step) * step + ORIGIN.lng,
+        lat: ORIGIN.lat - Math.floor((ORIGIN.lat - lat) / step) * step
+    };
+
+    L.rectangle([[snap.lat, snap.lng], [snap.lat - step, snap.lng + step]], {
+        color: '#f1c40f', weight: 4, fillOpacity: 0.4, fillColor: '#f1c40f'
+    }).addTo(selectionLayer);
+
+    const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+    const wsUrl = `https://wa.me/?text=Mi+Código+Postal+Panamá:+${codeToShow}`;
+
+    const marker = L.marker([lat, lng], { 
+        icon: L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', iconSize: [25, 41], iconAnchor: [12, 41] }) 
+    }).addTo(selectionLayer)
+     .bindPopup(`
+        <div class="codigo-final">${codeToShow}</div>
+        <div class="btn-container">
+            <a href="${mapsUrl}" target="_blank" class="btn-maps">📍 MAPS</a>
+            <a href="${wsUrl}" target="_blank" class="btn-ws">💬 WS</a>
+        </div>
+     `).openPopup();
+}
+
+// ===== CARGA DE GEOJSONS (Rutas y Estafetas) =====
+fetch('estafetasl.geojson').then(r => r.json()).then(data => {
+    L.geoJSON(data, { style: {color: 'red', weight: 3}, onEachFeature: (f,l) => {
+        l.bindPopup(`<b>RUTA POSTAL</b><br>Ruta: ${f.properties.RUTA}<br>Distancia: ${f.properties.distancia}km`);
+    }}).addTo(layerRutas);
+});
+
+fetch('estafetasp.geojson').then(r => r.json()).then(data => {
+    L.geoJSON(data, { pointToLayer: (f,ll) => L.circleMarker(ll, {radius: 7, fillColor: 'green', color: '#fff', weight: 2, fillOpacity: 1}),
+        onEachFeature: (f,l) => {
+            l.bindPopup(`<b>ESTAFETAS POSTALES</b><br>Nombre: ${f.properties.ESTAF_NAME}<br>Código: ${f.properties.ESTAF_CODE}`);
+    }}).addTo(layerEstafetas);
+});
+
+// ===== SELECTOR DE CAPAS =====
+const overlays = {
+    "🔲 Grid (Zonas)": layerMacro,
+    "🛣️ Rutas": layerRutas,
+    "📍 Estafetas": layerEstafetas,
+    "🔵 Mi Ubicación": layerMiUbicacion
+};
+L.control.layers(null, overlays, { collapsed: false, position: 'topright' }).addTo(mymap);
+
+// ===== EVENTOS Y UBICACIÓN =====
+function findMe() { mymap.locate({setView: true, maxZoom: 16}); }
+mymap.on('locationfound', (e) => {
+    layerMiUbicacion.clearLayers();
+    L.marker(e.latlng).addTo(layerMiUbicacion).bindPopup("Estás aquí").openPopup();
+});
+
+mymap.on('click', (e) => { if (isInsidePanama(e.latlng.lat, e.latlng.lng)) seleccionar(e.latlng.lat, e.latlng.lng); });
+
+document.getElementById('search-btn').addEventListener('click', () => {
+    const input = document.getElementById('search-input').value.toUpperCase().replace(/\s/g, '');
+    const p = input.split('-');
+    try {
+        const idM = decode(p[0]);
+        let lat, lng;
+        if (p.length === 1) {
+            const my = Math.floor(idM / PARAMS.MACRO_X_COUNT), mx = idM % PARAMS.MACRO_X_COUNT;
+            lng = ORIGIN.lng + (mx * PARAMS.RES_MACRO) + (PARAMS.RES_MACRO/2);
+            lat = ORIGIN.lat - (my * PARAMS.RES_MACRO) - (PARAMS.RES_MACRO/2);
+            mymap.flyTo([lat, lng], 11);
+        } else if (p.length === 2) {
+            const idMi = decode(p[1]), my = Math.floor(idM / PARAMS.MACRO_X_COUNT), mx = idM % PARAMS.MACRO_X_COUNT;
+            const miy = Math.floor(idMi / 24), mix = idMi % 24;
+            lng = ORIGIN.lng + (mx * PARAMS.RES_MACRO) + (mix * PARAMS.RES_MICRO) + (PARAMS.RES_MICRO/2);
+            lat = ORIGIN.lat - (my * PARAMS.RES_MACRO) - (miy * PARAMS.RES_MICRO) - (PARAMS.RES_MICRO/2);
+            mymap.flyTo([lat, lng], 14.5);
+        } else {
+            const idMi = decode(p[1]), idN = decode(p[2]), my = Math.floor(idM / PARAMS.MACRO_X_COUNT), mx = idM % PARAMS.MACRO_X_COUNT;
+            const miy = Math.floor(idMi / 24), mix = idMi % 24, nay = Math.floor(idN / 25), nax = idN % 25;
+            lng = ORIGIN.lng + (mx * PARAMS.RES_MACRO) + (mix * PARAMS.RES_MICRO) + (nax * PARAMS.RES_NANO) + (PARAMS.RES_NANO/2);
+            lat = ORIGIN.lat - (my * PARAMS.RES_MACRO) - (miy * PARAMS.RES_MICRO) - (nay * PARAMS.RES_NANO) - (PARAMS.RES_NANO/2);
+            mymap.flyTo([lat, lng], 18);
+        }
+        mymap.once('moveend', () => seleccionar(lat, lng));
+    } catch(e) { alert("Código inválido"); }
+});
+
+mymap.on('moveend', render);
+render();
 </script>
 </body>
 </html>
