@@ -197,7 +197,7 @@ function seleccionar(lat, lng, forcedZonaID = null) {
             tituloPopup = "ÁREA POSTAL";
             codigoFinal = `${zonaID}-${res.macro}${res.micro}`;
         } else {
-            tituloPopup = "ZONA POSTAL";
+            tituloPopup = "SUBZONA POSTAL";
             codigoFinal = `${zonaID}-${res.macro}`;
         }
         
@@ -301,6 +301,7 @@ render();
 </script>
 </body>
 </html>
+
 
 
 
