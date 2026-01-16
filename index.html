@@ -148,25 +148,40 @@ function getGridInfo(lat, lng) {
 // LÓGICA DE SELECCIÓN INTEGRADA
 function seleccionar(lat, lng, forcedZonaID = null) {
     selectionLayer.clearLayers();
+    
+    const z = mymap.getZoom();
+    const step = (z >= 16.5) ? PARAMS.RES_NANO : (z >= 13) ? PARAMS.RES_MICRO : PARAMS.RES_MACRO;
+    
+    // 1. Calculamos el "Snap" (la esquina del cuadro)
+    const snapLng = Math.floor((lng - ORIGIN.lng) / step + 0.00000001) * step + ORIGIN.lng;
+    const snapLat = ORIGIN.lat - Math.floor((ORIGIN.lat - lat) / step + 0.00000001) * step;
+    
+    // 2. Calculamos el CENTRO del cuadro para validar la zona
+    // Esto evita que si tocas un borde, te traiga una zona equivocada
+    const centroCuadro = {
+        lat: snapLat - (step / 2),
+        lng: snapLng + (step / 2)
+    };
+
     let zonaID = forcedZonaID;
 
-    // Validación contra el archivo GeoJSON para el mensaje de Área No Definida
+    // 3. Si no hay zona forzada, buscamos cuál zona contiene el CENTRO del cuadro
     if (!zonaID) {
         layerZonas.eachLayer(layer => {
-            if (layer instanceof L.Polygon && isPointInPolygon(L.latLng(lat, lng), layer)) {
+            if (layer instanceof L.Polygon && isPointInPolygon(L.latLng(centroCuadro.lat, centroCuadro.lng), layer)) {
                 zonaID = layer.feature.properties.VM_LEVEL;
             }
         });
     }
 
+    // 4. Si el centro del cuadro no cae en ninguna zona, error
     if (!zonaID) {
         L.popup().setLatLng([lat, lng])
-            .setContent('<div class="error-msg">⚠️ ÁREA NO DEFINIDA<br><small style="font-weight:normal; color:grey">Fuera de límites postales</small></div>')
+            .setContent('<div class="error-msg">⚠️ ÁREA NO DEFINIDA<br><small style="font-weight:normal; color:grey">Centro de cuadrícula fuera de límites</small></div>')
             .openOn(mymap);
         return;
     }
 
-    const z = mymap.getZoom();
     const res = getGridInfo(lat, lng);
     const isZonaVisible = mymap.hasLayer(layerZonas);
     let tituloPopup = "";
@@ -187,21 +202,23 @@ function seleccionar(lat, lng, forcedZonaID = null) {
             codigoFinal = `NIVEL-${res.macro}`;
         }
 
-        const step = (z >= 16.5) ? PARAMS.RES_NANO : (z >= 13) ? PARAMS.RES_MICRO : PARAMS.RES_MACRO;
-        const snap = { 
-            lng: Math.floor((lng - ORIGIN.lng) / step + 0.00000001) * step + ORIGIN.lng, 
-            lat: ORIGIN.lat - Math.floor((ORIGIN.lat - lat) / step + 0.00000001) * step 
-        };
-        L.rectangle([[snap.lat, snap.lng], [snap.lat - step, snap.lng + step]], { color: '#f1c40f', weight: 3, fillOpacity: 0.2, interactive: false }).addTo(selectionLayer);
+        // Dibujamos el cuadro usando el snap calculado arriba
+        L.rectangle([[snapLat, snapLng], [snapLat - step, snapLng + step]], { 
+            color: '#f1c40f', 
+            weight: 3, 
+            fillOpacity: 0.2, 
+            interactive: false 
+        }).addTo(selectionLayer);
     }
 
+    // Marcador en el punto exacto del clic (para mantener referencia visual)
     L.marker([lat, lng], { icon: L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', iconSize: [20, 32], iconAnchor: [10, 32] }) })
      .addTo(selectionLayer)
      .bindPopup(`
         <span class="popup-header">${tituloPopup}</span>
         <div class="codigo-final">${codigoFinal}</div>
         <div class="btn-container">
-            <a href="https://www.google.com/maps/search/?api=1&query=${lat},${lng}" target="_blank" class="btn-maps">📍 MAPS</a>
+            <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn-maps">📍 MAPS</a>
             <a href="https://wa.me/?text=Código+Postal:+${codigoFinal}" target="_blank" class="btn-ws">💬 WS</a>
         </div>
      `, { offset: L.point(0, -25) }).openPopup();
@@ -272,3 +289,4 @@ render();
 </script>
 </body>
 </html>
+
