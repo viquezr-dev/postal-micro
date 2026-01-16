@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <title>SISTEMA POSTAL PANAMÁ - OSM V12</title>
+    <title>SISTEMA POSTAL PANAMÁ - V12 OPTIMIZADO</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
@@ -9,8 +9,6 @@
 
     <style>
         body, html, #mapid { width: 100%; height: 100%; margin: 0; padding: 0; background: #ddd; }
-        
-        /* Buscador Superior */
         .search-container {
             position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
             z-index: 5000; display: flex; gap: 5px; background: white;
@@ -18,433 +16,178 @@
             width: 90%; max-width: 450px;
         }
         #search-input { flex: 1; border: none; padding: 8px 15px; outline: none; font-family: monospace; font-size: 16px; text-transform: uppercase; }
-        #search-btn { background: #e74c3c; color: white; border: none; padding: 8px 20px; border-radius: 30px; cursor: pointer; font-weight: bold; }
+        #search-btn { background: #27ae60; color: white; border: none; padding: 8px 20px; border-radius: 30px; cursor: pointer; font-weight: bold; }
         
-        /* Estilos de Etiquetas */
-        .leaflet-tooltip.watermark-tooltip { background: transparent!important; border: none!important; box-shadow: none!important; color: rgba(0,0,0,0.5); font-weight: bold; font-family: monospace; text-shadow: 1px 1px 0px white; }
+        .leaflet-tooltip.watermark-tooltip { background: transparent!important; border: none!important; box-shadow: none!important; color: rgba(0,0,0,0.5); font-weight: bold; font-family: monospace; text-shadow: 1px 1px 0px white; pointer-events: none; }
         .label-macro { color: #1a73e8!important; font-size: 15px; }
         .label-micro { color: #e67e22!important; font-size: 11px; }
         .nano-selection-label { background: transparent!important; border: none!important; color: #000!important; font-weight: 900; font-family: monospace; font-size: 14px; text-shadow: 1px 1px 0px white; }
-        
-        /* Estilo del Popup con X de cierre */
-        .codigo-final { 
-            background: #1a2a6c; color: white; padding: 12px; border-radius: 6px; 
-            font-size: 18px; font-weight: bold; text-align: center; margin-top: 5px;
-        }
-        
-        /* Zoom Controls */
-        .leaflet-control-zoom { margin-top: 100px!important; margin-right: 10px!important; }
-        
-        /* Info Box */
-        .info-box {
-            position: absolute; bottom: 20px; left: 20px; z-index: 1000;
-            background: white; padding: 10px; border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2); font-size: 12px;
-            max-width: 300px; display: none;
-        }
-        .info-box.active { display: block; }
+        .codigo-final { background: #1a2a6c; color: white; padding: 12px; border-radius: 6px; font-size: 18px; font-weight: bold; text-align: center; }
+        .inv { background: none; border: none; }
     </style>
 </head>
 <body>
 
 <div class="search-container">
-    <input type="text" id="search-input" placeholder="BUSCAR XX-XX-XX" maxlength="8">
+    <input type="text" id="search-input" placeholder="XX-XX-XX" maxlength="8">
     <button id="search-btn">BUSCAR</button>
 </div>
 
 <div id="mapid"></div>
-<div class="info-box" id="infoBox">
-    <strong>Resoluciones:</strong><br>
-    MACRO: 0.143° (~16 km) - 2 dígitos<br>
-    MICRO: 0.005958° (~660 m) - 2 dígitos<br>
-    NANO: 0.000238° (~26 m) - 2 dígitos<br>
-    <small>Formato: XX-XX-XX</small>
-</div>
 
 <script>
-// ===== PARÁMETROS ACTUALIZADOS =====
+// ===== CONFIGURACIÓN MAESTRA =====
 const ORIGIN = { lat: 10.0, lng: -83.0 };
-const PANAMA_LIMITS = { 
-    N: 10.0,  // Norte
-    S: 7.0,   // Sur
-    W: -83.0, // Oeste
-    E: -77.0  // Este
-};
+const PANAMA_LIMITS = { N: 10.0, S: 7.0, W: -83.0, E: -77.0 };
 
-// Nuevas resoluciones según tu especificación
 const PARAMS = {
-    RES_MACRO: 0.143,           // 16 km aprox
-    RES_MICRO: 0.005958,        // 660 m aprox
-    RES_NANO: 0.000238,         // 26 m aprox
-    ALFA: "23456789ABCDEFGHJKLMNPQRSTVWXYZ", // 30 caracteres
-    MACRO_CELLS_X: Math.ceil((PANAMA_LIMITS.E - PANAMA_LIMITS.W) / 0.143), // ~42
-    MACRO_CELLS_Y: Math.ceil((PANAMA_LIMITS.N - PANAMA_LIMITS.S) / 0.143)  // ~21
+    RES_MACRO: 0.143,     // ~16 km
+    RES_MICRO: 0.005958,  // ~660 m
+    RES_NANO: 0.000238,   // ~26 m
+    ALFA: "23456789ABCDEFGHJKLMNPQRSTVWXYZ",
+    MACRO_X_COUNT: Math.ceil((77.0 - 83.0) / -0.143) // ~42
 };
 
-// Total de celdas MACRO en Panamá: ~882 (42x21)
-const TOTAL_MACRO_CELLS = PARAMS.MACRO_CELLS_X * PARAMS.MACRO_CELLS_Y;
-const MICRO_PER_MACRO = 24 * 24;  // 576 celdas MICRO por MACRO
-const NANO_PER_MICRO = 25 * 25;   // 625 celdas NANO por MICRO
-
-console.log("Configuración:", {
-    totalMacroCells: TOTAL_MACRO_CELLS,
-    macroCellsX: PARAMS.MACRO_CELLS_X,
-    macroCellsY: PARAMS.MACRO_CELLS_Y,
-    microPerMacro: MICRO_PER_MACRO,
-    nanoPerMicro: NANO_PER_MICRO,
-    uniqueCodes: TOTAL_MACRO_CELLS * MICRO_PER_MACRO * NANO_PER_MICRO
-});
-
-// ===== INICIALIZACIÓN DEL MAPA =====
 const mymap = L.map('mapid', { 
-    zoomControl: true, 
     zoomSnap: 0.1,
     maxBounds: [[6.5, -83.5], [10.5, -76.5]],
-    maxBoundsViscosity: 1.0
+    maxBoundsViscosity: 1.0 
 }).setView([8.5, -80.0], 8);
 
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors'
-}).addTo(mymap);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mymap);
 
-// Capas
 const layerMacro = L.layerGroup().addTo(mymap);
 const layerMicro = L.layerGroup().addTo(mymap);
 const layerNano = L.layerGroup().addTo(mymap);
 const selectionLayer = L.layerGroup().addTo(mymap);
 
-// ===== FUNCIONES DE CODIFICACIÓN =====
+// ===== MOTORES =====
 function encode(num, len) {
-    if (num < 0) throw new Error("Número negativo no permitido");
-    let s = "";
-    for (let i = 0; i < len; i++) {
-        s = PARAMS.ALFA[num % 30] + s;
-        num = Math.floor(num / 30);
-    }
+    let s = ""; let n = Math.abs(Math.floor(num));
+    for (let i = 0; i < len; i++) { s = PARAMS.ALFA[n % 30] + s; n = Math.floor(n / 30); }
     return s;
 }
 
 function decode(s) {
     let n = 0;
     for (let i = 0; i < s.length; i++) {
-        const charIndex = PARAMS.ALFA.indexOf(s[i].toUpperCase());
-        if (charIndex === -1) throw new Error(`Carácter inválido: ${s[i]}`);
-        n = n * 30 + charIndex;
+        let idx = PARAMS.ALFA.indexOf(s[i].toUpperCase());
+        if (idx === -1) throw new Error();
+        n = n * 30 + idx;
     }
     return n;
 }
 
-function getSnappedCoords(lat, lng, step) {
-    const snapLng = Math.floor((lng - ORIGIN.lng) / step) * step + ORIGIN.lng;
-    const snapLat = ORIGIN.lat - Math.floor((ORIGIN.lat - lat) / step) * step;
-    return { lat: snapLat, lng: snapLng };
-}
-
-// ===== FUNCIÓN PRINCIPAL DE CÁLCULO =====
 function getInfo(lat, lng) {
-    // Verificar límites de Panamá
-    if (lat > PANAMA_LIMITS.N || lat < PANAMA_LIMITS.S || 
-        lng < PANAMA_LIMITS.W || lng > PANAMA_LIMITS.E) {
-        return null;
-    }
+    if (lat > PANAMA_LIMITS.N || lat < PANAMA_LIMITS.S || lng < PANAMA_LIMITS.W || lng > PANAMA_LIMITS.E) return null;
 
-    // Cálculo de índices MACRO
-    const dxMacro = lng - ORIGIN.lng;
-    const dyMacro = ORIGIN.lat - lat; // Positivo hacia el sur
-    
-    const mx = Math.floor(dxMacro / PARAMS.RES_MACRO);
-    const my = Math.floor(dyMacro / PARAMS.RES_MACRO);
-    
-    // Verificar que estamos dentro del grid MACRO de Panamá
-    if (mx < 0 || mx >= PARAMS.MACRO_CELLS_X || my < 0 || my >= PARAMS.MACRO_CELLS_Y) {
-        return null;
-    }
-    
-    const macroID = (my * PARAMS.MACRO_CELLS_X) + mx; // Fila-mayor para mejor distribución
-    
-    // Cálculo de índices MICRO (dentro del MACRO)
-    const residualXMacro = dxMacro - (mx * PARAMS.RES_MACRO);
-    const residualYMacro = dyMacro - (my * PARAMS.RES_MACRO);
-    
-    const microX = Math.floor(residualXMacro / PARAMS.RES_MICRO);
-    const microY = Math.floor(residualYMacro / PARAMS.RES_MICRO);
-    
-    // MICRO debe estar entre 0-23 (24 divisiones)
-    if (microX < 0 || microX >= 24 || microY < 0 || microY >= 24) {
-        console.warn("Coordenada en borde de celda MICRO", {microX, microY});
-        return null;
-    }
-    
-    const microID = (microY * 24) + microX; // Fila-mayor
-    
-    // Cálculo de índices NANO (dentro del MICRO)
-    const residualXMicro = residualXMacro - (microX * PARAMS.RES_MICRO);
-    const residualYMicro = residualYMacro - (microY * PARAMS.RES_MICRO);
-    
-    const nanoX = Math.floor(residualXMicro / PARAMS.RES_NANO);
-    const nanoY = Math.floor(residualYMicro / PARAMS.RES_NANO);
-    
-    // NANO debe estar entre 0-24 (25 divisiones)
-    if (nanoX < 0 || nanoX >= 25 || nanoY < 0 || nanoY >= 25) {
-        console.warn("Coordenada en borde de celda NANO", {nanoX, nanoY});
-        return null;
-    }
-    
-    const nanoID = (nanoY * 25) + nanoX; // Fila-mayor
-    
-    // Codificar
-    return {
-        macro: encode(macroID, 2),  // 2 dígitos para ~882 celdas (30² = 900 posibles)
-        micro: encode(microID, 2),  // 2 dígitos para 576 celdas
-        nano: encode(nanoID, 2),    // 2 dígitos para 625 celdas
-        raw: { macroID, microID, nanoID, mx, my, microX, microY, nanoX, nanoY }
-    };
+    const mx = Math.floor((lng - ORIGIN.lng) / PARAMS.RES_MACRO);
+    const my = Math.floor((ORIGIN.lat - lat) / PARAMS.RES_MACRO);
+    const macroID = (my * PARAMS.MACRO_X_COUNT) + mx;
+
+    const microX = Math.floor(((lng - ORIGIN.lng) % PARAMS.RES_MACRO) / PARAMS.RES_MICRO);
+    const microY = Math.floor(((ORIGIN.lat - lat) % PARAMS.RES_MACRO) / PARAMS.RES_MICRO);
+    const microID = (microY * 24) + microX;
+
+    const nanoX = Math.floor((((lng - ORIGIN.lng) % PARAMS.RES_MACRO) % PARAMS.RES_MICRO) / PARAMS.RES_NANO);
+    const nanoY = Math.floor((((ORIGIN.lat - lat) % PARAMS.RES_MACRO) % PARAMS.RES_MICRO) / PARAMS.RES_NANO);
+    const nanoID = (nanoY * 25) + nanoX;
+
+    return { macro: encode(macroID, 2), micro: encode(microID, 2), nano: encode(nanoID, 2) };
 }
 
-// ===== RENDERIZADO DE GRID =====
+// ===== RENDER OPTIMIZADO =====
 function render() {
-    layerMacro.clearLayers();
-    layerMicro.clearLayers();
-    layerNano.clearLayers();
-    
+    layerMacro.clearLayers(); layerMicro.clearLayers(); layerNano.clearLayers();
     const z = mymap.getZoom();
-    const bounds = mymap.getBounds();
-    
-    // Mostrar info box a bajo zoom
-    document.getElementById('infoBox').classList.toggle('active', z < 10);
-    
-    if (z >= 9) drawGridLevel(PARAMS.RES_MACRO, layerMacro, 'label-macro', 2.5, '#1a73e8', 0.4, z);
-    if (z >= 13) drawGridLevel(PARAMS.RES_MICRO, layerMicro, 'label-micro', 1.2, '#e67e22', 0.25, z);
-    if (z >= 16) drawGridLevel(PARAMS.RES_NANO, layerNano, '', 0.5, '#2c3e50', 0.15, z);
+    const b = mymap.getBounds();
+
+    if (z >= 9) drawGrid(PARAMS.RES_MACRO, layerMacro, 'label-macro', 2, '#1a73e8', 0.3, z);
+    if (z >= 13) drawGrid(PARAMS.RES_MICRO, layerMicro, 'label-micro', 1, '#e67e22', 0.2, z);
+    if (z >= 16.5) drawGrid(PARAMS.RES_NANO, layerNano, '', 0.5, '#2c3e50', 0.15, z);
 }
 
-function drawGridLevel(step, layer, labelClass, weight, color, opacity, zoom) {
-    const bounds = mymap.getBounds();
-    const start = getSnappedCoords(bounds.getSouth() - step, bounds.getWest() - step, step);
-    
-    let cellCount = 0;
-    const maxCells = 1200; // Límite de rendimiento
-    
-    for (let lng = start.lng; lng < bounds.getEast() + step && lng < PANAMA_LIMITS.E; lng += step) {
-        if (lng < PANAMA_LIMITS.W) continue;
-        
-        for (let lat = start.lat; lat < bounds.getNorth() + step && lat < PANAMA_LIMITS.N; lat += step) {
-            if (lat < PANAMA_LIMITS.S) continue;
-            
-            if (cellCount++ > maxCells) {
-                console.log("Límite de celdas alcanzado para", labelClass);
-                return;
-            }
-            
-            const centerLat = lat + step/2;
-            const centerLng = lng + step/2;
-            const data = getInfo(centerLat, centerLng);
-            
+function drawGrid(step, layer, labelClass, weight, color, opacity, zoom) {
+    const b = mymap.getBounds();
+    // Snapping para dibujo
+    let sLng = Math.floor((b.getWest() - ORIGIN.lng) / step) * step + ORIGIN.lng;
+    let sLat = ORIGIN.lat - Math.floor((ORIGIN.lat - b.getNorth()) / step) * step;
+
+    let count = 0;
+    for (let lo = sLng; lo < b.getEast() + step && lo < PANAMA_LIMITS.E; lo += step) {
+        for (let la = sLat; la > b.getSouth() - step && la > PANAMA_LIMITS.S; la -= step) {
+            if (count++ > 800) return; // Hard limit para fluidez
+
+            const data = getInfo(la - step/2, lo + step/2);
             if (!data) continue;
-            
-            // Dibujar rectángulo
-            L.rectangle([[lat, lng], [lat + step, lng + step]], {
-                color: color,
-                weight: weight,
-                fill: false,
-                opacity: opacity,
-                interactive: false
+
+            L.rectangle([[la, lo], [la - step, lo + step]], { 
+                color: color, weight: weight, fill: false, opacity: opacity, interactive: false 
             }).addTo(layer);
-            
-            // Añadir etiqueta si corresponde
-            if (labelClass && labelClass !== '') {
-                const showMacroLabel = (labelClass === 'label-macro' && zoom >= 9 && zoom < 13);
-                const showMicroLabel = (labelClass === 'label-micro' && zoom >= 13 && zoom < 16);
-                
-                if (showMacroLabel || showMicroLabel) {
-                    const text = labelClass === 'label-macro' ? data.macro : data.micro;
-                    L.marker([centerLat, centerLng], { icon: L.divIcon({ className: 'inv' }) })
-                     .bindTooltip(text, {
-                         permanent: true,
-                         direction: 'center',
-                         className: `watermark-tooltip ${labelClass}`
-                     })
-                     .addTo(layer);
-                }
+
+            // Etiquetas inteligentes
+            if (labelClass && ((labelClass==='label-macro' && zoom < 13) || (labelClass==='label-micro' && zoom >= 13 && zoom < 16.5))) {
+                const txt = labelClass === 'label-macro' ? data.macro : data.micro;
+                L.marker([la - step/2, lo + step/2], { icon: L.divIcon({className: 'inv'}) })
+                 .bindTooltip(txt, { permanent: true, direction: 'center', className: `watermark-tooltip ${labelClass}` })
+                 .addTo(layer);
             }
         }
     }
 }
 
-// ===== SELECCIÓN Y MARCADOR =====
-function seleccionarCuadro(lat, lng, codFull, nanoPart) {
+// ===== ACCIONES =====
+function seleccionar(lat, lng, code, nano) {
     selectionLayer.clearLayers();
-    
-    // Usar resolución NANO para el cuadro de selección
-    const step = PARAMS.RES_NANO;
-    const snap = getSnappedCoords(lat, lng, step);
-    
-    // Cuadro amarillo de selección
-    L.rectangle([[snap.lat, snap.lng], [snap.lat + step, snap.lng + step]], {
-        color: '#f1c40f',
-        weight: 4,
-        fillOpacity: 0.5,
-        fillColor: '#f1c40f',
-        interactive: false
+    const snap = {
+        lng: Math.floor((lng - ORIGIN.lng) / PARAMS.RES_NANO) * PARAMS.RES_NANO + ORIGIN.lng,
+        lat: ORIGIN.lat - Math.floor((ORIGIN.lat - lat) / PARAMS.RES_NANO) * PARAMS.RES_NANO
+    };
+
+    L.rectangle([[snap.lat, snap.lng], [snap.lat - PARAMS.RES_NANO, snap.lng + PARAMS.RES_NANO]], {
+        color: '#f1c40f', weight: 4, fillOpacity: 0.4, fillColor: '#f1c40f'
     }).addTo(selectionLayer);
-    
-    // Etiqueta NANO dentro del cuadro
-    L.marker([snap.lat + step/2, snap.lng + step/2], { icon: L.divIcon({ className: 'inv' }) })
-     .bindTooltip(nanoPart, {
-         permanent: true,
-         direction: 'center',
-         className: 'nano-selection-label'
-     })
-     .addTo(selectionLayer);
-    
-    // Marcador rojo
-    const redIcon = L.icon({
+
+    const redIcon = L.icon({ 
         iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
-        iconSize: [25, 41],
-        iconAnchor: [12, 41],
-        popupAnchor: [1, -34]
+        iconSize: [25, 41], iconAnchor: [12, 41], popupAnchor: [1, -34] 
     });
-    
-    L.marker([snap.lat + step/2, snap.lng + step/2], { icon: redIcon })
-     .addTo(selectionLayer);
-    
-    // Popup con código completo
-    L.popup({ offset: [0, -35], closeButton: true })
-     .setLatLng([snap.lat + step, snap.lng + step/2])
-     .setContent(`<div class="codigo-final">${codFull}</div>`)
-     .openOn(mymap);
+
+    L.marker([lat, lng], { icon: redIcon }).addTo(selectionLayer)
+     .bindPopup(`<div class="codigo-final">${code}</div>`, { closeButton: true })
+     .openPopup();
 }
 
 // ===== BÚSQUEDA =====
 document.getElementById('search-btn').addEventListener('click', () => {
     const input = document.getElementById('search-input').value.toUpperCase().replace(/\s/g, '');
-    const parts = input.split('-');
-    
-    if (parts.length !== 3 || parts[0].length !== 2 || parts[1].length !== 2 || parts[2].length !== 2) {
-        alert("Formato: XX-XX-XX (6 caracteres total)");
-        return;
-    }
-    
+    const p = input.split('-');
+    if (p.length !== 3) return alert("Formato: XX-XX-XX");
+
     try {
-        // Decodificar cada parte
-        const macroID = decode(parts[0]);
-        const microID = decode(parts[1]);
-        const nanoID = decode(parts[2]);
+        const idM = decode(p[0]), idMi = decode(p[1]), idN = decode(p[2]);
         
-        // Verificar rangos
-        if (macroID >= TOTAL_MACRO_CELLS) {
-            alert(`Código MACRO fuera de rango. Máximo: ${TOTAL_MACRO_CELLS-1}`);
-            return;
-        }
-        
-        if (microID >= MICRO_PER_MACRO) {
-            alert(`Código MICRO fuera de rango. Máximo: ${MICRO_PER_MACRO-1}`);
-            return;
-        }
-        
-        if (nanoID >= NANO_PER_MICRO) {
-            alert(`Código NANO fuera de rango. Máximo: ${NANO_PER_MICRO-1}`);
-            return;
-        }
-        
-        // Convertir IDs a coordenadas
-        const my = Math.floor(macroID / PARAMS.MACRO_CELLS_X);
-        const mx = macroID % PARAMS.MACRO_CELLS_X;
-        
-        const miy = Math.floor(microID / 24);
-        const mix = microID % 24;
-        
-        const nay = Math.floor(nanoID / 25);
-        const nax = nanoID % 25;
-        
-        // Calcular coordenadas (centro de la celda NANO)
-        const targetLng = ORIGIN.lng + 
-                         (mx * PARAMS.RES_MACRO) + 
-                         (mix * PARAMS.RES_MICRO) + 
-                         (nax * PARAMS.RES_NANO) + 
-                         (PARAMS.RES_NANO / 2);
-        
-        const targetLat = ORIGIN.lat - 
-                         (my * PARAMS.RES_MACRO) - 
-                         (miy * PARAMS.RES_MICRO) - 
-                         (nay * PARAMS.RES_NANO) - 
-                         (PARAMS.RES_NANO / 2);
-        
-        // Verificar que esté dentro de Panamá
-        if (targetLat > PANAMA_LIMITS.N || targetLat < PANAMA_LIMITS.S || 
-            targetLng < PANAMA_LIMITS.W || targetLng > PANAMA_LIMITS.E) {
-            alert("Coordenada fuera de los límites de Panamá");
-            return;
-        }
-        
-        console.log("Búsqueda exitosa:", {
-            input,
-            targetLat,
-            targetLng,
-            ids: { macroID, microID, nanoID },
-            indices: { mx, my, mix, miy, nax, nay }
-        });
-        
-        // Volar al punto y luego seleccionar
-        mymap.flyTo([targetLat, targetLng], 18);
-        
-        mymap.once('moveend', () => {
-            seleccionarCuadro(targetLat, targetLng, input, parts[2]);
-        });
-        
-    } catch (error) {
-        alert("Código no válido: " + error.message);
-        console.error("Error en búsqueda:", error);
-    }
+        const my = Math.floor(idM / PARAMS.MACRO_X_COUNT), mx = idM % PARAMS.MACRO_X_COUNT;
+        const miy = Math.floor(idMi / 24), mix = idMi % 24;
+        const nay = Math.floor(idN / 25), nax = idN % 25;
+
+        const lng = ORIGIN.lng + (mx * PARAMS.RES_MACRO) + (mix * PARAMS.RES_MICRO) + (nax * PARAMS.RES_NANO) + (PARAMS.RES_NANO/2);
+        const lat = ORIGIN.lat - (my * PARAMS.RES_MACRO) - (miy * PARAMS.RES_MICRO) - (nay * PARAMS.RES_NANO) - (PARAMS.RES_NANO/2);
+
+        if (lat < 7 || lat > 10 || lng < -83 || lng > -77) return alert("Fuera de límites");
+
+        mymap.flyTo([lat, lng], 18);
+        mymap.once('moveend', () => seleccionar(lat, lng, input, p[2]));
+    } catch(e) { alert("Código inválido"); }
 });
 
-// ===== EVENTOS =====
-// Click en el mapa
 mymap.on('click', (e) => {
-    const result = getInfo(e.latlng.lat, e.latlng.lng);
-    if (result) {
-        const fullCode = `${result.macro}-${result.micro}-${result.nano}`;
-        seleccionarCuadro(e.latlng.lat, e.latlng.lng, fullCode, result.nano);
-        
-        // Mostrar información en consola
-        console.log("Click en:", {
-            lat: e.latlng.lat,
-            lng: e.latlng.lng,
-            code: fullCode,
-            raw: result.raw
-        });
-    } else {
-        alert("Coordenada fuera del área cubierta");
-    }
+    const res = getInfo(e.latlng.lat, e.latlng.lng);
+    if (res) seleccionar(e.latlng.lat, e.latlng.lng, `${res.macro}-${res.micro}-${res.nano}`, res.nano);
 });
 
-// Actualizar grid al mover/zoom
 mymap.on('moveend', render);
-mymap.on('zoomend', render);
-
-// Mostrar coordenadas al mover el ratón (opcional)
-mymap.on('mousemove', (e) => {
-    // Puedes mostrar coordenadas en una tooltip si lo deseas
-});
-
-// Inicializar
 render();
-
-// Tecla Enter para buscar
-document.getElementById('search-input').addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-        document.getElementById('search-btn').click();
-    }
-});
 </script>
-
-<style>
-.inv { 
-    background: none; 
-    border: none; 
-    width: 0!important; 
-    height: 0!important; 
-}
-</style>
 </body>
 </html>
