@@ -46,6 +46,7 @@
 <div id="mapid"></div>
 
 <script>
+// PARÁMETROS MATEMÁTICOS ORIGINALES
 const ORIGIN = { lat: 10.0, lng: -83.0 };
 const PANAMA_LIMITS = { N: 10.0, S: 7.0, W: -83.0, E: -77.0 };
 const PARAMS = {
@@ -60,25 +61,23 @@ const mymap = L.map('mapid', { zoomSnap: 0.1, zoomControl: false }).setView([8.5
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mymap);
 L.control.zoom({ position: 'bottomright' }).addTo(mymap);
 
-// FUNCIONALIDAD: Estilos de resaltado
+// ESTILOS DE CAPAS
 const styleZonaNormal = { color: "#333", weight: 1.5, fillOpacity: 0.1, fillColor: "#3498db" };
-const styleZonaHover = { color: "#f1c40f", weight: 3, fillOpacity: 0.4, fillColor: "#3498db" };
+const styleZonaHover = { color: "#f1c40f", weight: 3, fillOpacity: 0.3, fillColor: "#3498db" };
 
-// CAPAS
+// INICIALIZACIÓN DE CAPAS
 const layerZonas = L.geoJSON(null, { 
     style: styleZonaNormal,
     onEachFeature: function(feature, layer) {
         layer.on({
             mouseover: function(e) {
-                var l = e.target;
-                l.setStyle(styleZonaHover);
-                if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) l.bringToFront();
+                e.target.setStyle(styleZonaHover);
+                if (!L.Browser.ie && !L.Browser.opera && !L.Browser.edge) e.target.bringToFront();
             },
             mouseout: function(e) {
                 layerZonas.resetStyle(e.target);
             },
             click: function(e) {
-                // Ejecutamos la selección precisa basándonos en la zona clickeada
                 seleccionar(e.latlng.lat, e.latlng.lng, feature.properties.VM_LEVEL);
                 L.DomEvent.stopPropagation(e);
             }
@@ -103,7 +102,25 @@ fetch('estafetasp.geojson').then(r => r.json()).then(data => {
     L.geoJSON(data, { pointToLayer: (f,ll) => L.circleMarker(ll, {radius: 6, fillColor: 'green', color: '#fff', weight: 2, fillOpacity: 1}), onEachFeature: (f,l) => l.bindPopup(`<b>ESTAFETA:</b> ${f.properties.ESTAF_NAME}`) }).addTo(layerEstafetas);
 });
 
-// CODIFICACIÓN/DECODIFICACIÓN
+// FUNCIONES DE APOYO (ALGORITMO PUNTO EN POLÍGONO)
+function isPointInPolygon(latlng, poly) {
+    let inside = false;
+    let x = latlng.lng, y = latlng.lat;
+    let parts = poly.getLatLngs();
+    if (!Array.isArray(parts[0][0])) parts = [parts]; 
+
+    for (let i = 0; i < parts.length; i++) {
+        let nodes = parts[i][0] instanceof L.LatLng ? parts[i] : parts[i][0];
+        for (let j = 0, k = nodes.length - 1; j < nodes.length; k = j++) {
+            let xi = nodes[j].lng, yi = nodes[j].lat;
+            let xj = nodes[k].lng, yj = nodes[k].lat;
+            if (((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside = !inside;
+        }
+    }
+    return inside;
+}
+
+// CODIFICACIÓN/DECODIFICACIÓN ORIGINAL
 function encode(num, len) {
     let s = ""; let n = Math.abs(Math.floor(num));
     for (let i = 0; i < len; i++) { s = PARAMS.ALFA[n % 30] + s; n = Math.floor(n / 30); }
@@ -128,45 +145,33 @@ function getGridInfo(lat, lng) {
     return { macro: encode((my * PARAMS.MACRO_X_COUNT) + mx, 2), micro: encode((microY * 24) + microX, 2), nano: encode((nanoY * 25) + nanoX, 2) };
 }
 
-// LOGICA DE SELECCIÓN (Modificada para recibir zona directa)
+// LÓGICA DE SELECCIÓN INTEGRADA
 function seleccionar(lat, lng, forcedZonaID = null) {
     selectionLayer.clearLayers();
     let zonaID = forcedZonaID;
 
-    // 1. Si el clic viene del mapa (forcedZonaID es null), buscamos si cayó en alguna zona
+    // Validación contra el archivo GeoJSON para el mensaje de Área No Definida
     if (!zonaID) {
         layerZonas.eachLayer(layer => {
-            // Verificamos si el punto está dentro de los límites del polígono
-            if (layer instanceof L.Polygon && layer.getBounds().contains(L.latLng(lat, lng))) {
+            if (layer instanceof L.Polygon && isPointInPolygon(L.latLng(lat, lng), layer)) {
                 zonaID = layer.feature.properties.VM_LEVEL;
             }
         });
     }
 
-    // 2. MODIFICACIÓN: Si después de buscar sigue siendo null, mostrar mensaje de error
     if (!zonaID) {
-        L.popup()
-            .setLatLng([lat, lng])
-            .setContent(`
-                <div class="error-msg">
-                    ⚠️ ÁREA NO DEFINIDA<br>
-                    <span style="font-size:10px; color:#666; font-weight:normal;">
-                        La ubicación seleccionada no tiene una<br>zona postal asignada en el sistema.
-                    </span>
-                </div>
-            `)
+        L.popup().setLatLng([lat, lng])
+            .setContent('<div class="error-msg">⚠️ ÁREA NO DEFINIDA<br><small style="font-weight:normal; color:grey">Fuera de límites postales</small></div>')
             .openOn(mymap);
-        return; // Salimos de la función para que no intente calcular el GRID
+        return;
     }
 
-    // 3. Si hay zonaID, continúa tu lógica original...
     const z = mymap.getZoom();
     const res = getGridInfo(lat, lng);
     const isZonaVisible = mymap.hasLayer(layerZonas);
     let tituloPopup = "";
     let codigoFinal = "";
 
-    // ... (aquí sigue el resto de tu código de formación de etiquetas y botones)
     if (isZonaVisible) {
         tituloPopup = "ZONA POSTAL";
         codigoFinal = zonaID;
@@ -196,7 +201,7 @@ function seleccionar(lat, lng, forcedZonaID = null) {
         <span class="popup-header">${tituloPopup}</span>
         <div class="codigo-final">${codigoFinal}</div>
         <div class="btn-container">
-            <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn-maps">📍 MAPS</a>
+            <a href="https://www.google.com/maps/search/?api=1&query=${lat},${lng}" target="_blank" class="btn-maps">📍 MAPS</a>
             <a href="https://wa.me/?text=Código+Postal:+${codigoFinal}" target="_blank" class="btn-ws">💬 WS</a>
         </div>
      `, { offset: L.point(0, -25) }).openPopup();
@@ -218,7 +223,7 @@ document.getElementById('search-btn').addEventListener('click', () => {
     } catch(e) { alert("Código inválido"); }
 });
 
-// RENDER CUADRÍCULA
+// RENDER DE CUADRÍCULA
 function render() {
     layerMacro.clearLayers(); layerMicro.clearLayers(); layerNano.clearLayers();
     const z = mymap.getZoom();
@@ -260,12 +265,10 @@ mymap.on('locationfound', (e) => {
     seleccionar(e.latlng.lat, e.latlng.lng);
 });
 
-// Evento de clic en el mapa (para áreas vacías)
+// EVENTOS DE MAPA
 mymap.on('click', (e) => seleccionar(e.latlng.lat, e.latlng.lng));
 mymap.on('moveend', render);
 render();
 </script>
 </body>
 </html>
-
-
