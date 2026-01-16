@@ -234,27 +234,7 @@ function seleccionar(lat, lng, forcedZonaID = null) {
     });
 }
         
-        // Dibujamos el cuadro usando el snap calculado arriba
-        L.rectangle([[snapLat, snapLng], [snapLat - step, snapLng + step]], { 
-            color: '#f1c40f', 
-            weight: 3, 
-            fillOpacity: 0.2, 
-            interactive: false 
-        }).addTo(selectionLayer);
-    }
-
-    // Marcador en el punto exacto del clic (para mantener referencia visual)
-    L.marker([lat, lng], { icon: L.icon({ iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png', iconSize: [20, 32], iconAnchor: [10, 32] }) })
-     .addTo(selectionLayer)
-     .bindPopup(`
-        <span class="popup-header">${tituloPopup}</span>
-        <div class="codigo-final">${codigoFinal}</div>
-        <div class="btn-container">
-            <a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank" class="btn-maps">📍 MAPS</a>
-            <a href="https://wa.me/?text=Código+Postal:+${codigoFinal}" target="_blank" class="btn-ws">💬 WS</a>
-        </div>
-     `, { offset: L.point(0, -25) }).openPopup();
-}
+       
 
 // BUSCADOR
 document.getElementById('search-btn').addEventListener('click', () => {
@@ -321,6 +301,7 @@ render();
 </script>
 </body>
 </html>
+
 
 
 
