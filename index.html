@@ -133,37 +133,40 @@ function seleccionar(lat, lng, forcedZonaID = null) {
     selectionLayer.clearLayers();
     let zonaID = forcedZonaID;
 
-    // Si no se pasó un ID (clic en el mapa base), verificamos manualmente
+    // 1. Si el clic viene del mapa (forcedZonaID es null), buscamos si cayó en alguna zona
     if (!zonaID) {
         layerZonas.eachLayer(layer => {
+            // Verificamos si el punto está dentro de los límites del polígono
             if (layer instanceof L.Polygon && layer.getBounds().contains(L.latLng(lat, lng))) {
-                // Verificación extra de precisión para polígonos complejos
-                if (leafletPip.pointInLayer([lng, lat], layerZonas).length > 0) {
-                    zonaID = layer.feature.properties.VM_LEVEL;
-                }
+                zonaID = layer.feature.properties.VM_LEVEL;
             }
         });
     }
 
-    // SI NO HAY ZONA (Clic fuera de los polígonos de estafetas)
+    // 2. MODIFICACIÓN: Si después de buscar sigue siendo null, mostrar mensaje de error
     if (!zonaID) {
-        L.popup().setLatLng([lat, lng])
+        L.popup()
+            .setLatLng([lat, lng])
             .setContent(`
-                <div style="text-align:center;">
-                    <div class="error-msg">⚠️ ÁREA NO DEFINIDA</div>
-                    <span style="font-size:10px; color:#666;">La ubicación [${lat.toFixed(4)}, ${lng.toFixed(4)}]<br>no pertenece a ninguna zona postal.</span>
+                <div class="error-msg">
+                    ⚠️ ÁREA NO DEFINIDA<br>
+                    <span style="font-size:10px; color:#666; font-weight:normal;">
+                        La ubicación seleccionada no tiene una<br>zona postal asignada en el sistema.
+                    </span>
                 </div>
             `)
             .openOn(mymap);
-        return; 
+        return; // Salimos de la función para que no intente calcular el GRID
     }
 
+    // 3. Si hay zonaID, continúa tu lógica original...
     const z = mymap.getZoom();
     const res = getGridInfo(lat, lng);
     const isZonaVisible = mymap.hasLayer(layerZonas);
     let tituloPopup = "";
     let codigoFinal = "";
 
+    // ... (aquí sigue el resto de tu código de formación de etiquetas y botones)
     if (isZonaVisible) {
         tituloPopup = "ZONA POSTAL";
         codigoFinal = zonaID;
@@ -264,4 +267,5 @@ render();
 </script>
 </body>
 </html>
+
 
